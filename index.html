@@ -495,7 +495,7 @@ function viewHome() {
 function cardLote(l) {
   const its = itemsOf(l.id_lote); const st = its.map(itemStatus);
   const okN = st.filter(s => s.st === 'ok').length;
-  const venc = pasosOf(l.id_lote).filter(p => pasoState(p) === 'vencido').length;
+  const venc = l.etapa === 'Cerrado' ? 0 : pasosOf(l.id_lote).filter(p => pasoState(p) === 'vencido').length;
   const d = dayOf(l);
   return `<a class="card" href="#/lote/${encodeURIComponent(l.id_lote)}">
     <div class="row"><div class="grow"><div class="b">${esc(l.id_lote)}${pendMark(l)}</div>
