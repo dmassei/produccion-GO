@@ -251,8 +251,10 @@ function itemStatus(it) {
 function dayOf(l) { const d = toDate(l.fecha_hora_inicio); return d ? Math.floor((Date.now() - d) / 864e5) + 1 : null; }
 function pasoState(p) {
   if (truthy(p.realizado)) return 'hecho';
-  const d = toDate(p.fecha_prevista);
-  return d && d < new Date() ? 'vencido' : 'pendiente';
+  // Vence al terminar el día previsto: las tareas del día de carga no aparecen vencidas a los pocos minutos
+  const d = toDate(p.fecha_prevista); if (!d) return 'pendiente';
+  const fin = new Date(d); fin.setHours(23, 59, 59, 999);
+  return new Date() > fin ? 'vencido' : 'pendiente';
 }
 function rendimiento(l) {
   const ob = num(l.litros_obtenidos), br = num(l.litros_brutos);
@@ -471,7 +473,8 @@ function viewHome() {
 
   let html = '';
   if (!snapshot) html += `<div class="note info">Todavía no hay datos descargados. Tocá el indicador de arriba para sincronizar.</div>`;
-  if (failed.length) html += `<div class="note bad"><b>${failed.length} registro(s) rechazado(s) por el servidor.</b> <a href="#" data-act="showFailed">Ver detalle</a></div>`;
+  if (failed.length) html += `<div class="note bad"><b>${failed.length} registro(s) rechazado(s) por el servidor.</b> <a href="#" data-act="showFailed">Ver detalle</a>
+    ${failed.some(o => /Operación desconocida/.test(o.error || '')) ? '<br>El servidor tiene una versión anterior del código: en Apps Script, Implementar → Gestionar implementaciones → ✏️ → Nueva versión. Después tocá Reintentar.' : ''}</div>`;
 
   if (nivel() >= 4) html += `<a class="card row" href="#/panel" style="border-color:var(--bad)"><div class="grow"><div class="b">Panel de control</div><div class="small muted">Corregir o borrar datos, proveedores e insumos</div></div><span class="chip bad">Admin</span></a>`;
   if (nivel() >= 2) html += `<a class="card row" href="#/recepcion"><div class="grow"><div class="b">Recepción de materia prima</div><div class="small muted">Registrar lotes de insumos recibidos</div></div><span>→</span></a>`;
