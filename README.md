@@ -56,6 +56,20 @@ La app sugiere `PREFIJO-AAMMDD` (por ejemplo `LY-261003`). El prefijo sale de un
 
 Cualquier usuario, mientras el lote no esté cerrado: tocá el insumo → en *Cargas registradas*, **Anular** junto a la carga equivocada → motivo y, si querés, la **cantidad correcta**. La carga original no se borra: queda tachada con quién la anuló, cuándo y por qué, y deja de sumar. La corrección se registra con la misma hora y lote, y el reporte de trazabilidad muestra ambas. Con el lote cerrado, solo un Admin puede corregir.
 
+## Stock de insumos
+
+El stock se calcula solo: **cantidad recibida − cargas (sin las anuladas) ± ajustes**, por lote de insumo.
+
+- **Pantalla Stock** (inicio → *Stock de insumos*): disponible por insumo y por lote, con alertas de stock bajo el mínimo y de lotes vencidos o que vencen en 30 días.
+- **Al crear un lote** la app compara lo que necesita la receta con el stock y avisa qué falta (no bloquea).
+- **Al cargar** sugiere el lote que vence primero y avisa si al lote elegido no le alcanza. Una producción puede usar varios lotes del mismo insumo: cada carga registra el suyo.
+- **Unidades:** en carga, recepción y ajustes se puede elegir kg o g (L o ml). La app convierte a la unidad de trabajo del insumo, que es en la que guarda todo.
+- **Ajustes de stock** (Supervisor o superior, desde el lote en la pantalla Stock): inventario físico (se ingresa lo contado y la app calcula la diferencia), merma, descarte o vencido. Van con motivo y quedan en *Auditoria*.
+- **Configuración** (Panel de control → Insumos): *Controla stock* = No para lo que no se controla (por ejemplo, el agua) y *Stock mínimo* para las alertas.
+- **Para arrancar:** registrá el inventario actual como una recepción por cada lote que haya en planta (notas: "Inventario inicial").
+
+Las columnas y la pestaña *Ajustes_Stock* se crean solas la primera vez que se usa la versión nueva del servidor.
+
 ## Usuarios administradores
 
 El rol **Admin** es un ingreso aparte, pensado solo para correcciones. Cada persona que lo necesite tiene **dos filas** en *Usuarios*, con PIN distintos:
@@ -91,7 +105,7 @@ Recetas y usuarios se editan directamente en la planilla.
 ## Cambios futuros
 
 - **Si cambiás `Code.gs`:** Implementar → Gestionar implementaciones → ✏️ → Versión: **Nueva versión** → Implementar. La URL no cambia.
-- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v7` → `go-v8`) (así los celulares toman la versión nueva).
+- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v8` → `go-v9`) (así los celulares toman la versión nueva).
 - **Receta nueva o ajustada:** agregá la versión en *Recetas*, *Receta_Items* y *Pasos* con estado *Vigente* y pasá la anterior a *Obsoleta*. Los lotes viejos conservan la receta con la que se hicieron.
 
 ## Limpieza opcional

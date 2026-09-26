@@ -54,6 +54,7 @@ a.card{display:block;text-decoration:none;color:inherit}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:var(--tap);padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-weight:600;cursor:pointer;text-decoration:none;color:var(--ink)}
 .btn.primary{background:var(--brand-2);border-color:var(--brand-2);color:#fff}
 .btn.sm{min-height:36px;padding:0 12px;font-size:14px}
+.qty{display:flex;gap:8px;align-items:flex-end}.qty .in{flex:1}.qty select.in{flex:0 0 96px}.qty .u{flex:0 0 auto;padding:0 6px 14px;color:var(--muted);font-weight:600}
 .btn.del{color:var(--bad);border-color:var(--bad);background:transparent}
 .btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 .btn.block{width:100%}
@@ -125,7 +126,7 @@ table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
 // Pegá acá la URL de la implementación de Apps Script (termina en /exec).
 // Si queda vacía, la app la pide la primera vez.
 const DEFAULT_API = '';
-const APP_VERSION = '2026-09-26 v7';
+const APP_VERSION = '2026-09-26 v8';
 
 const ETAPAS = ['Carga', 'Maceración', 'Escurrido', 'Filtrado', 'Control', 'Cerrado'];
 const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
@@ -133,8 +134,8 @@ const UMBRAL_RENDIMIENTO = 0.05;   // alerta si el rendimiento real difiere más
 const TOL_DEFAULT = 0.02;
 const KEYS = { Lotes: 'id_lote', Lote_Items: 'id_lote_item', Pasos_Lote: 'id_paso_lote', Cargas: 'id_carga',
   Eventos: 'id_evento', Controles: 'id_control', Lotes_Insumo: 'id_lote_insumo',
-  Proveedores: 'id_proveedor', Insumos: 'id_insumo', Analisis_Lab: 'id_analisis' };
-const TABLES = ['Recetas', 'Receta_Items', 'Pasos', 'Insumos', 'Lotes_Insumo', 'Productos', 'Proveedores',
+  Proveedores: 'id_proveedor', Insumos: 'id_insumo', Analisis_Lab: 'id_analisis', Ajustes_Stock: 'id_ajuste' };
+const TABLES = ['Recetas', 'Receta_Items', 'Pasos', 'Insumos', 'Lotes_Insumo', 'Productos', 'Proveedores', 'Ajustes_Stock',
   'Lotes', 'Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab', 'Cargas'];
 
 /* ============================================================
@@ -197,6 +198,7 @@ function computeState() {
   if (snapshot) TABLES.forEach(t => d[t] = (snapshot[t] || []).map(r => Object.assign({}, r)));
   queue.forEach(op => applyLocal(d, op));
   S = d;
+  S.Consumo = computeConsumo();
 }
 function applyLocal(d, op) {
   const t = d[op.table] || (d[op.table] = []);
@@ -224,6 +226,65 @@ function enqueue(ops) {
   LS.set('queue', queue);
   render();
   setTimeout(sync, 300);
+}
+
+
+/* ============================================================
+   Unidades y stock
+   ============================================================ */
+const UNIT_F = { g: 1, kg: 1000, ml: 1, L: 1000 };
+const UNIT_DIM = { g: 'masa', kg: 'masa', ml: 'vol', L: 'vol' };
+const unitsFor = u => UNIT_DIM[u] ? Object.keys(UNIT_F).filter(x => UNIT_DIM[x] === UNIT_DIM[u]) : [u];
+const toWork = (q, from, work) => (!from || from === work || !UNIT_F[from] || !UNIT_F[work]) ? q : q * UNIT_F[from] / UNIT_F[work];
+function fmtQ(v, u) { // muestra en la unidad más cómoda (1.500 g → 1,5 kg)
+  if (v == null || isNaN(v)) return '—';
+  if (UNIT_F[u] === 1 && Math.abs(v) >= 1000) return fmt(v / 1000, 3) + ' ' + (u === 'g' ? 'kg' : 'L');
+  if (UNIT_F[u] === 1000 && Math.abs(v) < 1 && v !== 0) return fmt(v * 1000, 1) + ' ' + (u === 'kg' ? 'g' : 'ml');
+  return fmt(v, 3) + ' ' + u;
+}
+const lastUnit = id => LS.get('unit.' + id, '');
+function qtyInput(name, unitName, work, idInsumo, value, unitSel, extra = '') {
+  const us = unitsFor(work); const sel = unitSel || work;
+  return `<div class="qty"><input class="in" name="${name}" inputmode="decimal" value="${esc(value || '')}" ${extra}>
+    ${us.length > 1 ? `<select class="in" name="${unitName}" ${/data-live="(\w+)"/.test(extra) ? extra.match(/data-live="\w+"/)[0] : ''}>${us.map(u => `<option ${u === sel ? 'selected' : ''}>${u}</option>`).join('')}</select>`
+      : `<span class="u">${esc(work)}</span><input type="hidden" name="${unitName}" value="${esc(work)}">`}</div>`;
+}
+function computeConsumo() {
+  const cons = Object.assign({}, (snapshot && snapshot.Consumo) || {});
+  const server = new Map(((snapshot && snapshot.Cargas) || []).map(c => [String(c.id_carga), c]));
+  const anulQ = new Set(queue.filter(o => o.type === 'anular').map(o => String(o.key)));
+  queue.forEach(o => {
+    if (o.type === 'insert' && o.table === 'Cargas' && !server.has(String(o.row.id_carga)) && !anulQ.has(String(o.row.id_carga))) {
+      const k = String(o.row.id_lote_insumo || ''); if (k) cons[k] = (cons[k] || 0) + (num(o.row.cantidad) || 0);
+    }
+    if (o.type === 'anular') { const c = server.get(String(o.key)); if (c && !truthy(c.anulada) && c.id_lote_insumo) cons[c.id_lote_insumo] = (cons[c.id_lote_insumo] || 0) - (num(c.cantidad) || 0); }
+  });
+  return cons;
+}
+const controla = i => !!i && !(i.controla_stock === false || String(i.controla_stock).toUpperCase() === 'FALSE');
+const ajustesOf = id => S.Ajustes_Stock.filter(a => same(a.id_lote_insumo, id));
+function stockLote(x) {
+  const rec = num(x.cantidad_recibida); if (isNaN(rec)) return null;
+  return rec - (S.Consumo[String(x.id_lote_insumo)] || 0) + ajustesOf(x.id_lote_insumo).reduce((t, a) => t + (num(a.cantidad) || 0), 0);
+}
+function lotesFEFO(idInsumo) { // primero en vencer, primero en salir; los agotados al final
+  const key = x => [toDate(x.vencimiento) ? toDate(x.vencimiento).getTime() : 9e15, toDate(x.fecha_recepcion) ? toDate(x.fecha_recepcion).getTime() : 9e15];
+  return S.Lotes_Insumo.filter(x => same(x.id_insumo, idInsumo)).map(x => ({ x, st: stockLote(x) }))
+    .sort((a, b) => ((a.st !== null && a.st <= 0) - (b.st !== null && b.st <= 0)) || key(a.x)[0] - key(b.x)[0] || key(a.x)[1] - key(b.x)[1]);
+}
+function stockInsumo(id) {
+  let tot = 0, conDatos = 0, sinDatos = 0;
+  S.Lotes_Insumo.filter(x => same(x.id_insumo, id)).forEach(x => { const st = stockLote(x); if (st === null) sinDatos++; else { tot += st; conDatos++; } });
+  const ins = insumo(id); const min = num(ins.stock_minimo);
+  let estado = conDatos ? (tot <= 0 ? 'sin' : (!isNaN(min) && tot < min ? 'bajo' : 'ok')) : 'nodata';
+  return { tot, conDatos, sinDatos, min, estado };
+}
+const DIA = 864e5;
+function vencState(x) { const v = toDate(x.vencimiento); if (!v) return ''; const d = (v - Date.now()) / DIA; return d < 0 ? 'vencido' : d <= 30 ? 'pronto' : ''; }
+function alertasStock() {
+  const bajo = S.Insumos.filter(i => truthy(i.activo) && controla(i)).map(i => ({ i, s: stockInsumo(i.id_insumo) })).filter(o => o.s.estado === 'bajo' || o.s.estado === 'sin');
+  const venc = S.Lotes_Insumo.filter(x => vencState(x) && (stockLote(x) === null || stockLote(x) > 0) && controla(insumo(x.id_insumo)));
+  return { bajo, venc, n: bajo.length + venc.length };
 }
 
 /* ---------- consultas ---------- */
@@ -326,7 +387,9 @@ async function sync(opts = {}) {
     lastError = e.name === 'AbortError' ? 'Sin respuesta del servidor' : (navigator.onLine ? String(e.message || e) : 'Sin conexión');
     if (opts.manual) toast(lastError);
   } finally {
-    syncing = false; render();
+    syncing = false;
+    // Si hay un formulario de pantalla a medio completar, no se redibuja (se perdería lo escrito)
+    if (document.querySelector('#app form[data-dirty]')) { computeState(); updatePill(); } else render();
   }
 }
 function moveToFailed(ops, error) {
@@ -366,6 +429,7 @@ document.addEventListener('submit', e => {
   const data = {}; new FormData(f).forEach((v, k) => data[k] = typeof v === 'string' ? v.trim() : v);
   fn(data, f);
 });
+document.addEventListener('input', e => { if (e.target.form && e.target.closest('#app')) e.target.form.dataset.dirty = '1'; }, true);
 document.addEventListener('input', e => { const fn = e.target.dataset.live && LIVE[e.target.dataset.live]; if (fn) fn(e.target); });
 document.addEventListener('change', e => { const fn = e.target.dataset.live && LIVE[e.target.dataset.live]; if (fn) fn(e.target); });
 const LIVE = {};
@@ -393,6 +457,7 @@ function render() {
   if (h[0] === 'lote' && h[1]) html = viewLote(h[1], h[2] || 'carga');
   else if (h[0] === 'nuevo') html = viewNuevo();
   else if (h[0] === 'recepcion') html = viewRecepcion();
+  else if (h[0] === 'stock') html = h[1] ? viewStockInsumo(h[1]) : viewStock();
   else if (h[0] === 'panel' && h[1] === 'lote' && h[2]) html = viewPanelLote(h[2]);
   else if (h[0] === 'panel' && h[1] === 'tabla' && h[2]) html = viewPanelTabla(h[2]);
   else if (h[0] === 'panel') html = viewPanel();
@@ -401,7 +466,7 @@ function render() {
   app.innerHTML = html;
   if (render.after) { const f = render.after; render.after = null; f(); }
 }
-window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
+window.addEventListener('hashchange', () => { closeModal(); window.scrollTo(0, 0); render(); });
 
 /* ---------- configuración del servidor ---------- */
 function viewConfig() {
@@ -485,6 +550,7 @@ function viewHome() {
     ${failed.some(o => /Operación desconocida/.test(o.error || '')) ? '<br>El servidor tiene una versión anterior del código: en Apps Script, Implementar → Gestionar implementaciones → ✏️ → Nueva versión. Después tocá Reintentar.' : ''}</div>`;
 
   if (nivel() >= 4) html += `<a class="card row" href="#/panel" style="border-color:var(--bad)"><div class="grow"><div class="b">Panel de control</div><div class="small muted">Corregir o borrar datos, proveedores e insumos</div></div><span class="chip bad">Admin</span></a>`;
+  { const al = alertasStock(); html += `<a class="card row" href="#/stock"><div class="grow"><div class="b">Stock de insumos</div><div class="small muted">Disponible por insumo y por lote</div></div>${al.n ? `<span class="chip warn">${al.n} alerta(s)</span>` : '<span>→</span>'}</a>`; }
   if (nivel() >= 2) html += `<a class="card row" href="#/recepcion"><div class="grow"><div class="b">Recepción de materia prima</div><div class="small muted">Registrar lotes de insumos recibidos</div></div><span>→</span></a>`;
   html += `<h2>Tareas para hoy</h2>`;
   html += tareas.length ? `<div class="card list">${tareas.map(({ l, p, d }) => `
@@ -560,12 +626,21 @@ LIVE.nuevo = el => {
   const brutos = netos / rend;
   const items = S.Receta_Items.filter(i => same(i.id_receta, r.id_receta)).sort((a, b) => num(a.orden_carga) - num(b.orden_carga));
   const ensayo = !isNaN(max) && brutos > max + 1e-9;
+  // necesidad total por insumo (un insumo puede aparecer en más de un uso, como el agua)
+  const need = {}; items.forEach(i => need[i.id_insumo] = (need[i.id_insumo] || 0) + num(i.cant_por_l_bruto) * brutos);
+  const faltan = [];
+  const rows = items.map(i => { const ins = insumo(i.id_insumo); const q = num(i.cant_por_l_bruto) * brutos; let stc = '<span class="muted">—</span>';
+    if (controla(ins)) { const st = stockInsumo(i.id_insumo);
+      if (st.estado === 'nodata') stc = '<span class="muted">sin datos</span>';
+      else { const ok = st.tot + 1e-9 >= need[i.id_insumo]; if (!ok && !faltan.includes(ins.nombre)) faltan.push(ins.nombre);
+        stc = `<span style="color:${ok ? 'var(--ok)' : 'var(--bad)'}">${fmtQ(st.tot, ins.unidad)}</span>`; } }
+    return `<tr><td>${esc(ins.nombre)}</td><td class="muted">${esc(i.uso)}</td><td class="n b">${fmtQ(q, ins.unidad)}</td><td class="n">${stc}</td></tr>`; }).join('');
   box.innerHTML = `
     <div class="note info"><b>${fmt(brutos, 2)} L brutos</b> a elaborar (${fmt(netos, 2)} L ÷ ${pct(rend, 0)} de rendimiento)</div>
     ${ensayo ? `<div class="note ${nivel() >= 3 ? 'warn' : 'bad'}"><b>Ensayo de escalado:</b> supera los ${fmt(max, 0)} L validados para esta receta. ${nivel() >= 3 ? 'Al crearlo quedás registrado como quien lo autoriza.' : 'Solo un Aprobador puede crearlo.'}</div>` : ''}
-    <div class="scroll"><table class="t"><tr><th>Insumo</th><th>Uso</th><th class="n">Cantidad</th></tr>
-    ${items.map(i => { const ins = insumo(i.id_insumo); return `<tr><td>${esc(ins.nombre)}</td><td class="muted">${esc(i.uso)}</td><td class="n b">${fmt(num(i.cant_por_l_bruto) * brutos, 3)} ${esc(ins.unidad)}</td></tr>`; }).join('')}
-    </table></div>`;
+    ${faltan.length ? `<div class="note warn"><b>Stock insuficiente:</b> ${faltan.map(esc).join(', ')}. Podés crear el lote igual, pero revisá antes de cargar.</div>` : ''}
+    <div class="scroll"><table class="t"><tr><th>Insumo</th><th>Uso</th><th class="n">Necesario</th><th class="n">Stock</th></tr>
+    ${rows}</table></div>`;
 };
 FORMS.nuevo = d => {
   const r = receta(d.receta); const netos = num(d.netos);
@@ -641,21 +716,26 @@ function tabCarga(l) {
   }).join('') + (canLoad ? `<p class="small muted">Tocá un insumo para registrar una carga. La hora se registra sola.</p>` : '');
 }
 function lotesInsumoOpts(idInsumo, sel) {
-  const ls = S.Lotes_Insumo.filter(x => same(x.id_insumo, idInsumo)).sort((a, b) => String(b.fecha_recepcion).localeCompare(String(a.fecha_recepcion)));
-  return ls.map(x => { const p = find('Proveedores', 'id_proveedor', x.id_proveedor);
-    return `<option value="${esc(x.id_lote_insumo)}" ${same(x.id_lote_insumo, sel) ? 'selected' : ''}>${esc(x.lote_proveedor)}${p ? ' · ' + esc(p.nombre) : ''}${x.fecha_recepcion ? ' · ' + fd(x.fecha_recepcion) : ''}</option>`; }).join('');
+  const u = insumo(idInsumo).unidad;
+  return lotesFEFO(idInsumo).map(({ x, st }) => { const p = find('Proveedores', 'id_proveedor', x.id_proveedor); const vs = vencState(x);
+    return `<option value="${esc(x.id_lote_insumo)}" ${same(x.id_lote_insumo, sel) ? 'selected' : ''}>${esc(x.lote_proveedor)}${p ? ' · ' + esc(p.nombre) : ''}${st === null ? '' : st <= 0 ? ' · agotado' : ' · quedan ' + fmtQ(st, u)}${x.vencimiento ? ' · vence ' + fd(x.vencimiento) : ''}${vs === 'vencido' ? ' ⚠ VENCIDO' : ''}</option>`; }).join('');
+}
+function loteSugerido(idInsumo, last) { // el último usado si le queda; si no, el que vence primero
+  const l = last && find('Lotes_Insumo', 'id_lote_insumo', last); const st = l ? stockLote(l) : null;
+  if (l && (st === null || st > 0)) return last;
+  const f = lotesFEFO(idInsumo)[0]; return f ? f.x.id_lote_insumo : '';
 }
 ACTIONS.carga = d => openCarga(d.item);
 function openCarga(itemId, keep = {}) {
   const it = find('Lote_Items', 'id_lote_item', itemId); const s = itemStatus(it); const ins = insumo(it.id_insumo);
   const canFix = (lote(it.id_lote) || {}).etapa !== 'Cerrado';
   const cs = cargasOf(itemId); const vivas = cs.filter(c => !anulada(c));
-  const lastLot = keep.lote || (vivas.length ? vivas[vivas.length - 1].id_lote_insumo : '');
+  const lastLot = keep.lote || loteSugerido(it.id_insumo, vivas.length ? vivas[vivas.length - 1].id_lote_insumo : '');
   const opts = lotesInsumoOpts(it.id_insumo, lastLot);
   openModal(`<h2 style="margin-top:0">${esc(ins.nombre)}</h2>
     <p class="small muted">Teórico ${fmt(s.teo)} ${esc(ins.unidad)} · cargado ${fmt(s.cargado)} · falta ${fmt(Math.max(0, s.pend))} ${esc(ins.unidad)}</p>
     <form data-form="carga" id="fCarga" data-item="${esc(itemId)}">
-      <label class="f">Cantidad cargada (${esc(ins.unidad)})<input class="in" name="cantidad" inputmode="decimal" required autofocus value="${esc(keep.cantidad || '')}" placeholder="${s.pend > 0 ? fmt(s.pend) : ''}" data-live="carga"></label>
+      <label class="f">Cantidad cargada${qtyInput('cantidad', 'unidad', ins.unidad, it.id_insumo, keep.cantidad, keep.unidad || lastUnit(it.id_insumo), `required autofocus data-live="carga" placeholder="${s.pend > 0 ? fmt(s.pend) : ''}"`)}</label>
       <div id="cargaWarn"></div>
       <label class="f">Lote del insumo
         <select class="in" name="lote" data-live="loteSel">${opts}<option value="__nuevo" ${!opts ? 'selected' : ''}>＋ Registrar lote nuevo…</option></select></label>
@@ -683,13 +763,13 @@ ACTIONS.anular = d => {
     <div class="note info">La carga no se borra: queda tachada en el registro, con tu nombre y el motivo, y deja de sumar.</div>
     <form data-form="anular" data-id="${esc(d.id)}">
       <label class="f">Motivo<input class="in" name="motivo" required placeholder="Ej. se tipeó 250 en lugar de 25" autofocus></label>
-      <label class="f">Cantidad correcta (${esc(ins.unidad)}) <span class="h">(opcional: si la completás, se registra en su lugar con la misma hora y lote)</span>
-        <input class="in" name="correcta" inputmode="decimal"></label>
+      <label class="f">Cantidad correcta <span class="h">(opcional: si la completás, se registra en su lugar con la misma hora y lote)</span>
+        ${qtyInput('correcta', 'unidad', ins.unidad, it.id_insumo, '', '', '')}</label>
       <div class="btns"><button type="button" class="btn" data-act="carga" data-item="${esc(it.id_lote_item)}">Volver</button><button class="btn danger">Anular</button></div></form>`);
 };
 FORMS.anular = (d, f) => {
   const c = find('Cargas', 'id_carga', f.dataset.id);
-  const q = num(d.correcta);
+  const q = toWork(num(d.correcta), d.unidad, insumo((find('Lote_Items', 'id_lote_item', c.id_lote_item) || {}).id_insumo).unidad);
   if (d.correcta && (isNaN(q) || q <= 0)) { toast('Cantidad correcta inválida'); return; }
   const ops = [{ type: 'anular', table: 'Cargas', key: c.id_carga, motivo: d.motivo }];
   if (!isNaN(q)) ops.push({ type: 'insert', table: 'Cargas', row: { id_carga: uid('CAR'), id_lote_item: c.id_lote_item, cantidad: q, id_lote_insumo: c.id_lote_insumo,
@@ -697,21 +777,30 @@ FORMS.anular = (d, f) => {
   enqueue(ops);
   openCarga(c.id_lote_item); toast(ops.length > 1 ? 'Carga corregida' : 'Carga anulada');
 };
-LIVE.loteSel = el => { $('#nuevoLoteBox').hidden = el.value !== '__nuevo'; };
-LIVE.carga = el => {
-  const f = $('#fCarga'); const it = find('Lote_Items', 'id_lote_item', f.dataset.item); const s = itemStatus(it);
-  const q = num(el.value); const box = $('#cargaWarn');
+LIVE.loteSel = el => { $('#nuevoLoteBox').hidden = el.value !== '__nuevo'; LIVE.carga(); };
+const cantForm = f => { const it = find('Lote_Items', 'id_lote_item', f.dataset.item); const q = num(f.cantidad.value);
+  return isNaN(q) ? NaN : toWork(q, f.unidad ? f.unidad.value : '', insumo(it.id_insumo).unidad); };
+LIVE.carga = () => {
+  const f = $('#fCarga'); if (!f) return;
+  const it = find('Lote_Items', 'id_lote_item', f.dataset.item); const s = itemStatus(it); const u = insumo(it.id_insumo).unidad;
+  const q = cantForm(f); const box = $('#cargaWarn');
   if (isNaN(q)) { box.innerHTML = ''; return; }
   const tot = s.cargado + q; const dev = s.teo ? (tot - s.teo) / s.teo : 0;
   const exc = dev > s.tol;
   $('#obsReq').textContent = exc ? '(obligatoria: supera la tolerancia)' : '(opcional)';
-  box.innerHTML = exc ? `<div class="note bad">Con esta carga el total queda en ${fmt(tot)}: <b>${pct(dev)}</b> sobre el teórico.</div>`
+  let h = exc ? `<div class="note bad">Con esta carga el total queda en ${fmtQ(tot, u)}: <b>${pct(dev)}</b> sobre el teórico.</div>`
     : (Math.abs(dev) <= s.tol ? `<div class="note ok">Con esta carga el insumo queda completo (${pct(dev)}).</div>` : '');
+  if (f.unidad && f.unidad.value !== u) h = `<div class="small muted" style="margin-top:6px">= ${fmt(q, 3)} ${esc(u)}</div>` + h;
+  const li = f.lote && find('Lotes_Insumo', 'id_lote_insumo', f.lote.value); const st = li ? stockLote(li) : null;
+  if (st !== null && q > st + 1e-9) h += `<div class="note warn">El lote ${esc(li.lote_proveedor)} tiene ${fmtQ(Math.max(st, 0), u)} disponibles. Si usás otro lote para el resto, registralo como una carga aparte.</div>`;
+  if (li && vencState(li) === 'vencido') h += `<div class="note bad">El lote ${esc(li.lote_proveedor)} está vencido (${fd(li.vencimiento)}).</div>`;
+  box.innerHTML = h;
 };
 FORMS.carga = (d, f) => {
   const it = find('Lote_Items', 'id_lote_item', f.dataset.item); const s = itemStatus(it);
-  const q = num(d.cantidad);
+  const q = cantForm(f);
   if (isNaN(q) || q <= 0) { toast('Ingresá una cantidad válida'); return; }
+  if (d.unidad) LS.set('unit.' + it.id_insumo, d.unidad);
   const dev = s.teo ? (s.cargado + q - s.teo) / s.teo : 0;
   if (dev > s.tol && !d.obs) { toast('La observación es obligatoria cuando se supera la tolerancia'); return; }
   const ops = []; let loteIns = d.lote;
@@ -725,7 +814,7 @@ FORMS.carga = (d, f) => {
     fecha_hora: nowIso(), operario: session.nombre, hora_sync: '', observacion: d.obs || '' } });
   const again = f.dataset.again === '1';
   enqueue(ops);
-  if (again) { openCarga(it.id_lote_item, { lote: loteIns, cantidad: d.cantidad }); toast('Carga guardada'); }
+  if (again) { openCarga(it.id_lote_item, { lote: loteIns, cantidad: d.cantidad, unidad: d.unidad }); toast('Carga guardada'); }
   else { closeModal(); toast('Carga guardada'); }
 };
 
@@ -911,6 +1000,66 @@ function viewReporte(id) {
   <p class="small muted">Generado el ${fdt(nowIso())} por ${esc(session.nombre)}.</p></div>`;
 }
 
+
+/* ============================================================
+   Stock de insumos
+   ============================================================ */
+function viewStock() {
+  const ins = S.Insumos.filter(i => truthy(i.activo) && controla(i)).map(i => ({ i, s: stockInsumo(i.id_insumo) }))
+    .sort((a, b) => ({ sin: 0, bajo: 1, ok: 2, nodata: 3 }[a.s.estado] - { sin: 0, bajo: 1, ok: 2, nodata: 3 }[b.s.estado]) || String(a.i.nombre).localeCompare(String(b.i.nombre)));
+  const al = alertasStock();
+  const chip = e => ({ sin: '<span class="chip bad">Sin stock</span>', bajo: '<span class="chip warn">Bajo mínimo</span>', ok: '<span class="chip ok">OK</span>', nodata: '<span class="chip">Sin datos</span>' }[e]);
+  return `<div class="row"><a class="btn sm" href="#/">← Inicio</a><span class="grow"></span>${nivel() >= 2 ? '<a class="btn sm primary" href="#/recepcion">＋ Recepción</a>' : ''}</div>
+  <h1 style="margin-top:12px">Stock de insumos</h1>
+  ${al.venc.length ? `<div class="note warn"><b>Vencimientos:</b> ${al.venc.map(x => `${esc(insumo(x.id_insumo).nombre)} lote ${esc(x.lote_proveedor)} (${vencState(x) === 'vencido' ? 'vencido' : 'vence'} ${fd(x.vencimiento)})`).join(' · ')}</div>` : ''}
+  ${ins.map(({ i, s }) => `<a class="card row" href="#/stock/${encodeURIComponent(i.id_insumo)}"><div class="grow"><div class="b">${esc(i.nombre)}</div>
+    <div class="small muted">${s.conDatos ? `${s.conDatos} lote(s) con stock registrado` : 'Sin recepciones con cantidad'}${s.sinDatos ? ` · ${s.sinDatos} sin cantidad` : ''}${!isNaN(s.min) ? ' · mínimo ' + fmtQ(s.min, i.unidad) : ''}</div></div>
+    <div style="text-align:right"><div class="b">${s.conDatos ? fmtQ(s.tot, i.unidad) : ''}</div>${chip(s.estado)}</div></a>`).join('') || '<p class="muted">No hay insumos con control de stock.</p>'}
+  <p class="small muted">Stock = cantidad recibida − cargas (sin las anuladas) ± ajustes. Los insumos sin control de stock (por ejemplo, el agua) se configuran en el Panel de control.</p>`;
+}
+function viewStockInsumo(id) {
+  const i = insumo(id); if (!i.id_insumo) return `<div class="note warn">Insumo no encontrado.</div>`;
+  const s = stockInsumo(id); const u = i.unidad;
+  const lots = lotesFEFO(id);
+  return `<div class="row"><a class="btn sm" href="#/stock">← Stock</a></div>
+  <h1 style="margin-top:12px">${esc(i.nombre)}</h1>
+  <p class="muted">Disponible <b>${s.conDatos ? fmtQ(s.tot, u) : '—'}</b>${!isNaN(s.min) ? ' · mínimo ' + fmtQ(s.min, u) : ''} · unidad de trabajo ${esc(u)}</p>
+  ${lots.map(({ x, st }) => { const p = find('Proveedores', 'id_proveedor', x.id_proveedor); const aj = ajustesOf(x.id_lote_insumo); const vs = vencState(x);
+    const cons = S.Consumo[String(x.id_lote_insumo)] || 0;
+    return `<div class="card"><div class="row"><div class="grow"><div class="b">Lote ${esc(x.lote_proveedor)}${pendMark(x)}</div>
+      <div class="small muted">${p ? esc(p.nombre) + ' · ' : ''}recibido ${x.fecha_recepcion ? fd(x.fecha_recepcion) : '—'}${x.vencimiento ? ` · <span style="color:${vs ? 'var(--bad)' : 'inherit'}">vence ${fd(x.vencimiento)}</span>` : ''}</div></div>
+      ${st === null ? '<span class="chip">Sin cantidad</span>' : st <= 0 ? '<span class="chip">Agotado</span>' : vs === 'vencido' ? '<span class="chip bad">Vencido</span>' : ''}</div>
+      <div class="item" style="cursor:default"><div class="q"><div><span>Recibido</span><b>${st === null ? '—' : fmtQ(num(x.cantidad_recibida), u)}</b></div>
+      <div><span>Usado</span><b>${fmtQ(cons, u)}</b></div><div><span>Disponible</span><b style="color:${st !== null && st < 0 ? 'var(--bad)' : 'inherit'}">${st === null ? '—' : fmtQ(st, u)}</b></div></div></div>
+      ${aj.length ? `<div class="small" style="margin-top:8px">${aj.map(a => `${fdt(a.fecha_hora)} · ${esc(a.tipo)} <b>${num(a.cantidad) >= 0 ? '+' : ''}${fmtQ(num(a.cantidad), u)}</b> · ${esc(a.usuario || '')} · ${esc(a.motivo || '')}${pendMark(a)}`).join('<br>')}</div>` : ''}
+      ${st === null ? '<p class="small muted">Sin cantidad recibida: un Admin puede completarla en Panel de control → Materia prima recibida.</p>'
+        : nivel() >= 2 ? `<div class="btns" style="margin-top:8px"><button class="btn sm" data-act="ajuste" data-id="${esc(x.id_lote_insumo)}">Ajustar stock</button></div>` : ''}
+    </div>`; }).join('') || '<p class="muted">Sin lotes registrados.</p>'}`;
+}
+const TIPOS_AJUSTE = ['Inventario físico', 'Merma', 'Descarte', 'Vencido', 'Otro'];
+ACTIONS.ajuste = d => {
+  const x = find('Lotes_Insumo', 'id_lote_insumo', d.id); const i = insumo(x.id_insumo); const st = stockLote(x);
+  openModal(`<h2 style="margin-top:0">Ajustar stock</h2>
+    <p><b>${esc(i.nombre)}</b> · lote ${esc(x.lote_proveedor)}<br><span class="small muted">Disponible según sistema: ${fmtQ(st, i.unidad)}</span></p>
+    <form data-form="ajuste" data-id="${esc(d.id)}" id="fAj">
+      <label class="f">Tipo<select class="in" name="tipo" data-live="ajTipo">${TIPOS_AJUSTE.map(t => `<option>${t}</option>`).join('')}</select></label>
+      <label class="f"><span id="ajLbl">Cantidad contada (lo que hay físicamente)</span>${qtyInput('cantidad', 'unidad', i.unidad, i.id_insumo, '', '', 'required')}</label>
+      <label class="f">Motivo<input class="in" name="motivo" required placeholder="Ej. inventario mensual"></label>
+      <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary">Guardar ajuste</button></div></form>`);
+};
+LIVE.ajTipo = el => { $('#ajLbl').textContent = el.value === 'Inventario físico' ? 'Cantidad contada (lo que hay físicamente)' : 'Cantidad a descontar'; };
+FORMS.ajuste = (d, f) => {
+  const x = find('Lotes_Insumo', 'id_lote_insumo', f.dataset.id); const i = insumo(x.id_insumo);
+  const q = toWork(num(d.cantidad), d.unidad, i.unidad);
+  if (isNaN(q) || q < 0) { toast('Cantidad inválida'); return; }
+  const delta = d.tipo === 'Inventario físico' ? q - stockLote(x) : -q;
+  if (Math.abs(delta) < 1e-9) { toast('No hay diferencia con el sistema'); return; }
+  const rec = num(x.cantidad_recibida);
+  if (Math.abs(delta) > 2 * rec && !confirm(`El ajuste (${fmtQ(delta, i.unidad)}) es mayor al doble de lo recibido en el lote (${fmtQ(rec, i.unidad)}). ¿Es correcta la unidad?`)) return;
+  enqueue([{ type: 'insert', table: 'Ajustes_Stock', row: { id_ajuste: uid('AJ'), id_lote_insumo: x.id_lote_insumo, cantidad: Math.round(delta * 1000) / 1000,
+    tipo: d.tipo, fecha_hora: nowIso(), usuario: session.nombre, motivo: d.motivo } }]);
+  closeModal(); toast(`Ajuste ${delta >= 0 ? '+' : ''}${fmtQ(delta, i.unidad)}`);
+};
 /* ============================================================
    Recepción de materia prima (Supervisor o superior)
    ============================================================ */
@@ -921,24 +1070,26 @@ function viewRecepcion() {
   return `<h1>Recepción de materia prima</h1>
   <form class="card" data-form="recepcion" id="fRec">
     <label class="f">Insumo<select class="in" name="insumo" required data-live="recUnidad"><option value="">—</option>${insumosOpts()}</select></label>
+    <div class="note info small" style="margin-bottom:0">Para cargar el stock inicial, registrá lo que hay hoy como una recepción por lote (notas: "Inventario inicial").</div>
     <label class="f">Proveedor<select class="in" name="proveedor"><option value="">—</option>${S.Proveedores.map(p => `<option value="${esc(p.id_proveedor)}">${esc(p.nombre)}</option>`).join('')}</select></label>
     <label class="f">Lote del proveedor<input class="in" name="lote" required placeholder="Ej. ALC-7781"></label>
-    <div class="grid2"><label class="f">Cantidad recibida <span class="h" id="recU"></span><input class="in" name="cantidad" inputmode="decimal"></label>
-    <label class="f">Fecha de recepción<input class="in" type="date" name="fecha" value="${hoy}" required></label></div>
+    <label class="f">Cantidad recibida<div id="recQty">${qtyInput('cantidad', 'unidad', '', '', '', '', 'required')}</div></label>
+    <label class="f">Fecha de recepción<input class="in" type="date" name="fecha" value="${hoy}" required></label>
     <label class="f">Vencimiento <span class="h">(opcional)</span><input class="in" type="date" name="venc"></label>
     <label class="f">Notas <span class="h">(opcional)</span><textarea class="in" name="notas"></textarea></label>
     <div class="btns"><a class="btn" href="#/">Volver</a><button class="btn primary">Registrar</button></div>
   </form>
   <h2>Últimas recepciones</h2>
   ${recientes.length ? `<div class="card list">${recientes.map(x => { const i = insumo(x.id_insumo); const p = find('Proveedores', 'id_proveedor', x.id_proveedor);
-    return `<div class="li small"><b>${esc(i.nombre)}</b> · lote ${esc(x.lote_proveedor)}${p ? ' · ' + esc(p.nombre) : ''}${pendMark(x)}<br><span class="muted">${x.fecha_recepcion ? fd(x.fecha_recepcion) : 'sin fecha'}${x.cantidad_recibida !== '' && x.cantidad_recibida != null ? ' · ' + fmt(x.cantidad_recibida) + ' ' + esc(i.unidad) : ''}${x.vencimiento ? ' · vence ' + fd(x.vencimiento) : ''}</span></div>`; }).join('')}</div>` : '<p class="muted">Sin recepciones registradas.</p>'}`;
+    return `<div class="li small"><b>${esc(i.nombre)}</b> · lote ${esc(x.lote_proveedor)}${p ? ' · ' + esc(p.nombre) : ''}${pendMark(x)}<br><span class="muted">${x.fecha_recepcion ? fd(x.fecha_recepcion) : 'sin fecha'}${x.cantidad_recibida !== '' && x.cantidad_recibida != null ? ' · ' + fmtQ(num(x.cantidad_recibida), i.unidad) : ''}${x.vencimiento ? ' · vence ' + fd(x.vencimiento) : ''}</span></div>`; }).join('')}</div>` : '<p class="muted">Sin recepciones registradas.</p>'}`;
 }
 const insumosOpts = sel => S.Insumos.filter(i => truthy(i.activo) || same(i.id_insumo, sel)).map(i => `<option value="${esc(i.id_insumo)}" ${same(i.id_insumo, sel) ? 'selected' : ''}>${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('');
 const dateToIso = v => v ? new Date(v + 'T12:00:00').toISOString() : '';
-LIVE.recUnidad = el => { $('#recU').textContent = el.value ? '(' + insumo(el.value).unidad + ')' : ''; };
+LIVE.recUnidad = el => { const v = $('#fRec').cantidad.value; $('#recQty').innerHTML = qtyInput('cantidad', 'unidad', el.value ? insumo(el.value).unidad : '', el.value, v, '', 'required'); };
 FORMS.recepcion = (d, f) => {
-  const q = num(d.cantidad);
-  if (d.cantidad && isNaN(q)) { toast('Cantidad inválida'); return; }
+  const q = toWork(num(d.cantidad), d.unidad, insumo(d.insumo).unidad);
+  if (isNaN(q) || q <= 0) { toast('Cantidad inválida'); return; }
+  if (!confirm(`Registrar ${fmtQ(q, insumo(d.insumo).unidad)} de ${insumo(d.insumo).nombre}, lote ${d.lote}?`)) return;
   if (S.Lotes_Insumo.some(x => same(x.id_insumo, d.insumo) && same(String(x.lote_proveedor).trim().toUpperCase(), d.lote.toUpperCase()))
       && !confirm('Ese lote ya está registrado para este insumo. ¿Registrarlo de nuevo?')) return;
   enqueue([{ type: 'insert', table: 'Lotes_Insumo', row: { id_lote_insumo: uid('LI'), id_insumo: d.insumo, id_proveedor: d.proveedor || '', lote_proveedor: d.lote,
@@ -978,12 +1129,15 @@ const SCHEMA = {
   Proveedores: { t: 'Proveedor', f: [['nombre', 'Nombre', 'text'], ['pais', 'País', 'text'], ['contacto', 'Contacto', 'text'], ['notas', 'Notas', 'area']] },
   Insumos: { t: 'Insumo', f: [['nombre', 'Nombre', 'text'], ['categoria', 'Categoría', 'select', () => ['Alcohol', 'Agua', 'Endulzante', 'Hierba', 'Botánico', 'Envase', 'Otro']],
     ['unidad', 'Unidad de trabajo', 'select', () => ['L', 'kg', 'g', 'un']], ['provisto_por_cliente', 'Provisto por el cliente', 'bool'],
-    ['requiere_lote', 'Requiere lote', 'bool'], ['activo', 'Activo', 'bool']] }
+    ['requiere_lote', 'Requiere lote', 'bool'], ['activo', 'Activo', 'bool'], ['controla_stock', 'Controla stock', 'bool'],
+    ['stock_minimo', 'Stock mínimo (en la unidad de trabajo)', 'num']] }
 };
+const BOOL_DEFAULT = { controla_stock: true }; // vacío en la planilla = Sí
+const boolVal = (name, v) => (v === '' || v == null) && name in BOOL_DEFAULT ? BOOL_DEFAULT[name] : truthy(v);
 function fieldInput(name, label, type, src, v, row) {
   let inp;
   if (type === 'select') inp = `<select class="in" name="${name}">${optList(src(row || {}), v)}</select>`;
-  else if (type === 'bool') inp = `<select class="in" name="${name}">${optList([['true', 'Sí'], ['false', 'No']], truthy(v) ? 'true' : 'false', false)}</select>`;
+  else if (type === 'bool') inp = `<select class="in" name="${name}">${optList([['true', 'Sí'], ['false', 'No']], boolVal(name, v) ? 'true' : 'false', false)}</select>`;
   else if (type === 'dt') inp = `<input class="in" type="datetime-local" name="${name}" value="${toDate(v) ? toLocalInput(toDate(v)) : ''}">`;
   else if (type === 'date') inp = `<input class="in" type="date" name="${name}" value="${toDate(v) ? toLocalInput(toDate(v)).slice(0, 10) : ''}">`;
   else if (type === 'area') inp = `<textarea class="in" name="${name}">${esc(v)}</textarea>`;
@@ -1018,7 +1172,7 @@ FORMS.adminEdit = (d, f) => {
   for (const [n, l, ty] of sc.f) {
     const v = parseField(ty, d[n] == null ? '' : d[n]);
     if (v === undefined) { toast('Valor inválido en ' + l); return; }
-    if (!sameVal(ty, row[n], v)) fields[n] = v;
+    if (!sameVal(ty, ty === 'bool' ? boolVal(n, row[n]) : row[n], v)) fields[n] = v;
   }
   if (!Object.keys(fields).length) { toast('No hay cambios'); return; }
   enqueue([{ type: 'update', table: t, key: k, fields, admin: true, motivo: d.__motivo }]);

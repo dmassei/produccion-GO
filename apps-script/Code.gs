@@ -35,7 +35,7 @@ function setup() {
 const ROLES = { 'Operario': 1, 'Supervisor': 2, 'Aprobador': 3, 'Admin': 4 };
 
 // Tablas que la app descarga (maestros + producción)
-const MASTER_TABLES = ['Recetas', 'Receta_Items', 'Pasos', 'Insumos', 'Lotes_Insumo', 'Productos', 'Proveedores'];
+const MASTER_TABLES = ['Recetas', 'Receta_Items', 'Pasos', 'Insumos', 'Lotes_Insumo', 'Productos', 'Proveedores', 'Ajustes_Stock'];
 const CHILD_TABLES = ['Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab'];
 const RECENT_LOTS = 40; // lotes cerrados recientes que se envían completos
 
@@ -43,7 +43,7 @@ const RECENT_LOTS = 40; // lotes cerrados recientes que se envían completos
 const INSERT_RULES = {
   Lotes: 2, Lote_Items: 2, Pasos_Lote: 2,
   Cargas: 1, Eventos: 1, Controles: 1, Lotes_Insumo: 1,
-  Proveedores: 4, Insumos: 4
+  Proveedores: 4, Insumos: 4, Ajustes_Stock: 2
 };
 const UPDATE_RULES = {
   Lotes: {
@@ -54,7 +54,7 @@ const UPDATE_RULES = {
 };
 // Modo administrador: tablas que el Admin puede corregir o borrar (queda registrado en Auditoria)
 const ADMIN_TABLES = ['Lotes', 'Lote_Items', 'Pasos_Lote', 'Cargas', 'Eventos', 'Controles', 'Analisis_Lab',
-  'Lotes_Insumo', 'Proveedores', 'Insumos'];
+  'Lotes_Insumo', 'Proveedores', 'Insumos', 'Ajustes_Stock'];
 // Campos que la app muestra al instante pero que siempre escribe el servidor
 const SERVER_FIELDS = { Lotes: ['aprobado_por', 'fecha_aprobacion'], Pasos_Lote: ['operario'] };
 
@@ -75,6 +75,7 @@ function route_(p) {
     if (p.action === 'ping') return { ok: true, time: new Date().toISOString() };
     if (p.action === 'users') return { ok: true, users: listUsers_() };
     const user = auth_(p.user, p.pin);
+    ensureSchema_();
     if (p.action === 'snapshot') return { ok: true, user: user, data: snapshot_(), time: new Date().toISOString() };
     if (p.action === 'sync') {
       const results = applyOps_(p.ops || [], user);
@@ -155,7 +156,15 @@ function snapshot_() {
 
   CHILD_TABLES.forEach(t => data[t] = readTable_(t).rows.filter(r => ids.has(String(r.id_lote))));
   const items = new Set(data.Lote_Items.map(i => String(i.id_lote_item)));
-  data.Cargas = readTable_('Cargas').rows.filter(c => items.has(String(c.id_lote_item)));
+  const cargas = readTable_('Cargas').rows;
+  data.Cargas = cargas.filter(c => items.has(String(c.id_lote_item)));
+  // Consumo acumulado por lote de insumo (todas las cargas no anuladas, de todos los lotes)
+  data.Consumo = {};
+  cargas.forEach(c => {
+    if (!c.id_lote_insumo || c.anulada === true || String(c.anulada).toUpperCase() === 'TRUE') return;
+    const k = String(c.id_lote_insumo);
+    data.Consumo[k] = (data.Consumo[k] || 0) + (Number(c.cantidad) || 0);
+  });
   return data;
 }
 
@@ -210,6 +219,10 @@ function applyOne_(op, user, cache) {
     // Datos que siempre pone el servidor
     if (op.table === 'Cargas') { row.operario = user.nombre; row.hora_sync = now; }
     if (op.table === 'Eventos' || op.table === 'Controles') row.operario = user.nombre;
+    if (op.table === 'Ajustes_Stock') {
+      if (!row.motivo || !String(row.motivo).trim()) throw new Error('Falta el motivo del ajuste');
+      row.usuario = user.nombre;
+    }
     if (op.table === 'Lotes') {
       row.responsable = row.responsable || user.nombre;
       if (row.ensayo_escalado === true) {
@@ -226,6 +239,7 @@ function applyOne_(op, user, cache) {
     const values = t.headers.map(h => toCell_(h, row[h]));
     t.sh.appendRow(values);
     t.keys.push(key);
+    if (op.table === 'Ajustes_Stock') audit_(user, 'Ajuste de stock', 'Lotes_Insumo', row.id_lote_insumo, null, { cantidad: row.cantidad, tipo: row.tipo }, row.motivo);
     return { status: 'ok' };
   }
 
@@ -376,4 +390,19 @@ function anularCarga_(op, user, cache) {
   Object.keys(set).forEach(f => t.sh.getRange(idx + 2, t.headers.indexOf(f) + 1).setValue(set[f]));
   audit_(user, 'Carga anulada', 'Cargas', op.key, { cantidad: c.cantidad, fecha_hora: c.fecha_hora, operario: c.operario }, null, op.motivo);
   return { status: 'ok' };
+}
+
+// ---------------------------------------------------------------- esquema
+// Crea solo las columnas y pestañas que agregan las versiones nuevas (una vez por versión).
+const SCHEMA_VERSION = '3';
+function ensureSchema_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('schema') === SCHEMA_VERSION) return;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureCols_('Cargas', CARGA_COLS, {});
+  ensureCols_('Insumos', ['Controla_stock', 'Stock_minimo'], {});
+  if (!ss.getSheetByName('Ajustes_Stock')) {
+    ss.insertSheet('Ajustes_Stock').appendRow(['ID_Ajuste', 'ID_Lote_Insumo', 'Cantidad', 'Tipo', 'Fecha_hora', 'Usuario', 'Motivo']);
+  }
+  props.setProperty('schema', SCHEMA_VERSION);
 }
