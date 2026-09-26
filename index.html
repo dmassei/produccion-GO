@@ -27,6 +27,7 @@
   }
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
 button,input,select,textarea{font:inherit;color:inherit}
 body.admin header.top{background:#7A1F1F}
@@ -124,6 +125,7 @@ table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
 // Pegá acá la URL de la implementación de Apps Script (termina en /exec).
 // Si queda vacía, la app la pide la primera vez.
 const DEFAULT_API = '';
+const APP_VERSION = '2026-09-26 v5';
 
 const ETAPAS = ['Carga', 'Maceración', 'Escurrido', 'Filtrado', 'Control', 'Cerrado'];
 const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
@@ -369,7 +371,7 @@ ACTIONS.syncNow = () => { if (!navigator.onLine) toast('Sin conexión: los datos
 ACTIONS.print = () => window.print();
 ACTIONS.userMenu = () => openModal(`
   <h2 style="margin-top:0">${esc(session.nombre)}</h2>
-  <p class="muted">Rol: ${esc(session.rol)} · ${queue.length} operaciones sin enviar${lastSync ? ' · Última sincronización ' + fdt(lastSync) : ''}</p>
+  <p class="muted">Rol: ${esc(session.rol)} · ${queue.length} operaciones sin enviar${lastSync ? ' · Última sincronización ' + fdt(lastSync) : ''} · versión ${APP_VERSION}</p>
   ${lastError ? `<div class="note warn">${esc(lastError)}</div>` : ''}
   <div class="btns"><button class="btn" data-act="close">Cerrar</button><button class="btn danger" data-act="logout">Cambiar de usuario</button></div>`);
 ACTIONS.logout = () => { session = null; LS.set('session', null); closeModal(); location.hash = '#/'; render(); };
@@ -429,7 +431,7 @@ function viewLogin() {
     <input class="in" name="pin" type="password" inputmode="numeric" autocomplete="off" required autofocus></label>
     <div class="btns"><button class="btn primary">Ingresar</button></div></form>` : ''}
   </div>
-  <p class="small muted">¿Otro servidor? <a href="#" data-act="resetApi">Configurar URL</a></p>`;
+  <p class="small muted">¿Otro servidor? <a href="#" data-act="resetApi">Configurar URL</a> · versión ${APP_VERSION}</p>`;
 }
 ACTIONS.pickUser = d => { loginSel = d.n; render(); const i = $('input[name=pin]'); if (i) i.focus(); };
 ACTIONS.resetApi = () => { if (queue.length) { toast('Hay datos sin enviar: sincronizá antes de cambiar el servidor'); return; } api = ''; LS.set('api', ''); render(); };
