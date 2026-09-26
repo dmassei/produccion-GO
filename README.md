@@ -52,21 +52,42 @@ La app sugiere `PREFIJO-AAMMDD` (por ejemplo `LY-261003`). El prefijo sale de un
 - Si el servidor rechaza algo (por ejemplo, PIN cambiado o falta de permiso), aparece un aviso rojo en el inicio con opción de reintentar o descartar.
 - Antes de iniciar una producción, abrí la app con conexión para que el lote quede descargado.
 
+## Usuarios administradores
+
+El rol **Admin** es un ingreso aparte, pensado solo para correcciones. Cada persona que lo necesite tiene **dos filas** en *Usuarios*, con PIN distintos:
+
+| Nombre | Rol | Uso |
+|---|---|---|
+| Adriana | Aprobador | Trabajo diario |
+| Adriana · Admin | Admin | Solo para corregir datos |
+
+Así, en el trabajo diario nadie puede borrar por error. Con un usuario Admin el encabezado de la app se pone **rojo**.
+
+**Panel de control** (solo Admin, desde el inicio):
+- Corregir o borrar cargas, eventos y controles; corregir pasos, cantidades teóricas y datos del lote.
+- **Eliminar lote** (para pruebas): pide escribir el número de lote y borra todos sus registros.
+- Proveedores, insumos y materia prima recibida: alta y corrección. Lo que ya se usó en producción no se puede borrar, solo corregir; un insumo que no se usa más se marca inactivo.
+- Cada corrección o borrado pide un **motivo** y queda en la pestaña **Auditoria** (fecha, usuario, qué cambió, valor anterior y nuevo). La pestaña se crea sola la primera vez.
+
+Un lote real que salió mal no se elimina: el Aprobador lo cierra como **Descartado** con el motivo.
+
 ## Permisos por rol
 
 | Acción | Operario | Supervisor | Aprobador | Admin |
 |---|---|---|---|---|
 | Registrar cargas, pasos, bitácora y controles | ✓ | ✓ | ✓ | ✓ |
 | Crear lotes, cambiar etapa, cargar litros obtenidos y envasado | | ✓ | ✓ | ✓ |
+| Recepción de materia prima | | ✓ | ✓ | ✓ |
 | Crear lotes por encima de la escala validada (ensayo) | | | ✓ | ✓ |
 | Aprobar / reprocesar / descartar y cerrar el lote | | | ✓ | ✓ |
+| Panel de control: corregir, borrar, proveedores e insumos | | | | ✓ |
 
-Recetas, insumos, proveedores y usuarios se editan directamente en la planilla.
+Recetas y usuarios se editan directamente en la planilla.
 
 ## Cambios futuros
 
 - **Si cambiás `Code.gs`:** Implementar → Gestionar implementaciones → ✏️ → Versión: **Nueva versión** → Implementar. La URL no cambia.
-- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` cambiá `go-v1` por `go-v2` (así los celulares toman la versión nueva).
+- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v2` → `go-v3`) (así los celulares toman la versión nueva).
 - **Receta nueva o ajustada:** agregá la versión en *Recetas*, *Receta_Items* y *Pasos* con estado *Vigente* y pasá la anterior a *Obsoleta*. Los lotes viejos conservan la receta con la que se hicieron.
 
 ## Limpieza opcional

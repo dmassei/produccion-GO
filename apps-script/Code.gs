@@ -41,7 +41,8 @@ const RECENT_LOTS = 40; // lotes cerrados recientes que se envían completos
 // Qué puede escribir la app, y con qué rol mínimo
 const INSERT_RULES = {
   Lotes: 2, Lote_Items: 2, Pasos_Lote: 2,
-  Cargas: 1, Eventos: 1, Controles: 1, Lotes_Insumo: 1
+  Cargas: 1, Eventos: 1, Controles: 1, Lotes_Insumo: 1,
+  Proveedores: 4, Insumos: 4
 };
 const UPDATE_RULES = {
   Lotes: {
@@ -50,6 +51,9 @@ const UPDATE_RULES = {
   },
   Pasos_Lote: { realizado: 1, fecha_hora_real: 1, notas: 1 }
 };
+// Modo administrador: tablas que el Admin puede corregir o borrar (queda registrado en Auditoria)
+const ADMIN_TABLES = ['Lotes', 'Lote_Items', 'Pasos_Lote', 'Cargas', 'Eventos', 'Controles', 'Analisis_Lab',
+  'Lotes_Insumo', 'Proveedores', 'Insumos'];
 // Campos que la app muestra al instante pero que siempre escribe el servidor
 const SERVER_FIELDS = { Lotes: ['aprobado_por', 'fecha_aprobacion'], Pasos_Lote: ['operario'] };
 
@@ -223,6 +227,10 @@ function applyOne_(op, user, cache) {
     return { status: 'ok' };
   }
 
+  if (op.type === 'update' && op.admin) return adminUpdate_(op, user, cache);
+  if (op.type === 'delete') return adminDelete_(op, user, cache);
+  if (op.type === 'deleteLote') return adminDeleteLote_(op, user, cache);
+
   if (op.type === 'update') {
     const rules = UPDATE_RULES[op.table];
     if (!rules) throw new Error('Tabla no editable: ' + op.table);
@@ -249,4 +257,91 @@ function applyOne_(op, user, cache) {
   }
 
   throw new Error('Operación desconocida');
+}
+
+// ---------------------------------------------------------------- modo administrador
+
+function requireAdmin_(op, user) {
+  if (user.nivel < 4) throw new Error('Solo un Admin puede corregir o borrar datos');
+  if (op.table && ADMIN_TABLES.indexOf(op.table) < 0) throw new Error('Tabla no editable: ' + op.table);
+  if (!op.motivo || !String(op.motivo).trim()) throw new Error('Falta el motivo de la corrección');
+}
+
+function rowObj_(t, idx) {
+  const vals = t.sh.getRange(idx + 2, 1, 1, t.headers.length).getValues()[0];
+  const o = {};
+  t.headers.forEach((h, i) => { if (h) o[h] = vals[i] instanceof Date ? vals[i].toISOString() : vals[i]; });
+  return o;
+}
+
+function audit_(user, accion, tabla, clave, antes, despues, motivo) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName('Auditoria');
+  if (!sh) {
+    sh = ss.insertSheet('Auditoria');
+    sh.appendRow(['Fecha', 'Usuario', 'Acción', 'Tabla', 'Clave', 'Antes', 'Después', 'Motivo']);
+  }
+  sh.appendRow([new Date(), user.nombre, accion, tabla, clave,
+    antes ? JSON.stringify(antes) : '', despues ? JSON.stringify(despues) : '', motivo || '']);
+}
+
+function adminUpdate_(op, user, cache) {
+  requireAdmin_(op, user);
+  const t = tableInfo_(op.table, cache);
+  const idx = t.keys.indexOf(String(op.key));
+  if (idx < 0) throw new Error('No existe ' + op.key + ' en ' + op.table);
+  const before = rowObj_(t, idx);
+  const antes = {}, despues = {};
+  Object.keys(op.fields || {}).forEach(f => {
+    const col = t.headers.indexOf(f);
+    if (col <= 0) return; // columna inexistente o la clave: no se modifica
+    antes[f] = before[f];
+    despues[f] = op.fields[f];
+    t.sh.getRange(idx + 2, col + 1).setValue(toCell_(f, op.fields[f]));
+  });
+  audit_(user, 'Corrección', op.table, op.key, antes, despues, op.motivo);
+  return { status: 'ok' };
+}
+
+function adminDelete_(op, user, cache) {
+  requireAdmin_(op, user);
+  if (op.table === 'Lotes') throw new Error('Para borrar un lote usá "Eliminar lote"');
+  const t = tableInfo_(op.table, cache);
+  const idx = t.keys.indexOf(String(op.key));
+  if (idx < 0) return { status: 'dup' }; // ya no estaba
+  const before = rowObj_(t, idx);
+  t.sh.deleteRow(idx + 2);
+  t.keys.splice(idx, 1);
+  audit_(user, 'Borrado', op.table, op.key, before, null, op.motivo);
+  return { status: 'ok' };
+}
+
+function deleteWhere_(name, pred, cache) {
+  const sh = sheet_(name);
+  const values = sh.getDataRange().getValues();
+  const headers = (values[0] || []).map(norm_);
+  let n = 0;
+  for (let i = values.length - 1; i >= 1; i--) {
+    const o = {};
+    headers.forEach((h, j) => o[h] = values[i][j]);
+    if (pred(o)) { sh.deleteRow(i + 1); n++; }
+  }
+  delete cache[name];
+  return n;
+}
+
+function adminDeleteLote_(op, user, cache) {
+  requireAdmin_(Object.assign({}, op, { table: 'Lotes' }), user);
+  const id = String(op.key);
+  const lote = readTable_('Lotes').rows.find(r => String(r.id_lote) === id);
+  if (!lote) return { status: 'dup' };
+  const items = new Set(readTable_('Lote_Items').rows.filter(r => String(r.id_lote) === id).map(r => String(r.id_lote_item)));
+  const detalle = {};
+  detalle.Cargas = deleteWhere_('Cargas', r => items.has(String(r.id_lote_item)), cache);
+  ['Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab'].forEach(t => {
+    detalle[t] = deleteWhere_(t, r => String(r.id_lote) === id, cache);
+  });
+  detalle.Lotes = deleteWhere_('Lotes', r => String(r.id_lote) === id, cache);
+  audit_(user, 'Lote eliminado', 'Lotes', id, lote, detalle, op.motivo);
+  return { status: 'ok' };
 }

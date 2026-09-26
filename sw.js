@@ -1,6 +1,6 @@
 // Service worker: guarda la app en el dispositivo para que abra sin conexión.
 // Al publicar cambios en index.html, subí el número de versión.
-const CACHE = 'go-v1';
+const CACHE = 'go-v2';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

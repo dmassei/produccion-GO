@@ -29,6 +29,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
 button,input,select,textarea{font:inherit;color:inherit}
+body.admin header.top{background:#7A1F1F}
 header.top{position:sticky;top:0;z-index:20;background:var(--brand);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px}
 header.top .t{font-weight:700;font-size:18px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 header.top a{color:#fff;text-decoration:none}
@@ -51,6 +52,8 @@ a.card{display:block;text-decoration:none;color:inherit}
 .chip.bad{background:var(--bad-bg);color:var(--bad)}.chip.info{background:var(--info-bg);color:var(--info)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:var(--tap);padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-weight:600;cursor:pointer;text-decoration:none;color:var(--ink)}
 .btn.primary{background:var(--brand-2);border-color:var(--brand-2);color:#fff}
+.btn.sm{min-height:36px;padding:0 12px;font-size:14px}
+.btn.del{color:var(--bad);border-color:var(--bad);background:transparent}
 .btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 .btn.block{width:100%}
 .btn:disabled{opacity:.5}
@@ -127,7 +130,8 @@ const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
 const UMBRAL_RENDIMIENTO = 0.05;   // alerta si el rendimiento real difiere más de 5 puntos
 const TOL_DEFAULT = 0.02;
 const KEYS = { Lotes: 'id_lote', Lote_Items: 'id_lote_item', Pasos_Lote: 'id_paso_lote', Cargas: 'id_carga',
-  Eventos: 'id_evento', Controles: 'id_control', Lotes_Insumo: 'id_lote_insumo' };
+  Eventos: 'id_evento', Controles: 'id_control', Lotes_Insumo: 'id_lote_insumo',
+  Proveedores: 'id_proveedor', Insumos: 'id_insumo', Analisis_Lab: 'id_analisis' };
 const TABLES = ['Recetas', 'Receta_Items', 'Pasos', 'Insumos', 'Lotes_Insumo', 'Productos', 'Proveedores',
   'Lotes', 'Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab', 'Cargas'];
 
@@ -200,6 +204,12 @@ function applyLocal(d, op) {
   } else if (op.type === 'update') {
     const r = t.find(r => same(r[key], op.key));
     if (r) Object.assign(r, op.fields, { _pending: true });
+  } else if (op.type === 'delete') {
+    d[op.table] = t.filter(r => !same(r[key], op.key));
+  } else if (op.type === 'deleteLote') {
+    const items = new Set((d.Lote_Items || []).filter(r => same(r.id_lote, op.key)).map(r => String(r.id_lote_item)));
+    d.Cargas = (d.Cargas || []).filter(r => !items.has(String(r.id_lote_item)));
+    ['Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab', 'Lotes'].forEach(x => d[x] = (d[x] || []).filter(r => !same(r.id_lote, op.key)));
   }
 }
 function enqueue(ops) {
@@ -289,7 +299,7 @@ async function sync(opts = {}) {
         const pin = creds[by];
         const ids = new Set(ops.map(o => o.id));
         if (!pin) { moveToFailed(ops, 'Sin credenciales guardadas para ' + by); continue; }
-        const r = await call({ action: 'sync', user: by, pin, ops: ops.map(({ id, type, table, row, key, fields }) => ({ id, type, table, row, key, fields })) });
+        const r = await call({ action: 'sync', user: by, pin, ops: ops.map(({ id, type, table, row, key, fields, admin, motivo }) => ({ id, type, table, row, key, fields, admin, motivo })) });
         if (!r.ok) {
           if (AUTH_ERR.test(r.error || '')) { moveToFailed(ops, r.error); continue; }
           throw new Error(r.error);
@@ -322,7 +332,8 @@ function updatePill() {
   const n = queue.length;
   txt.textContent = syncing ? 'Sincronizando…' : n ? `${n} sin enviar` : (lastSync ? 'Al día ' + ft(lastSync) : (navigator.onLine ? 'En línea' : 'Sin conexión'));
   const up = $('#userPill');
-  if (session) { up.hidden = false; up.textContent = session.nombre.split(' ')[0]; } else up.hidden = true;
+  if (session) { up.hidden = false; up.textContent = session.rol === 'Admin' ? 'ADMIN · ' + session.nombre.split(' ')[0] : session.nombre.split(' ')[0]; } else up.hidden = true;
+  document.body.classList.toggle('admin', !!session && session.rol === 'Admin');
 }
 window.addEventListener('online', () => { updatePill(); sync(); });
 window.addEventListener('offline', updatePill);
@@ -373,6 +384,10 @@ function render() {
   let html;
   if (h[0] === 'lote' && h[1]) html = viewLote(h[1], h[2] || 'carga');
   else if (h[0] === 'nuevo') html = viewNuevo();
+  else if (h[0] === 'recepcion') html = viewRecepcion();
+  else if (h[0] === 'panel' && h[1] === 'lote' && h[2]) html = viewPanelLote(h[2]);
+  else if (h[0] === 'panel' && h[1] === 'tabla' && h[2]) html = viewPanelTabla(h[2]);
+  else if (h[0] === 'panel') html = viewPanel();
   else if (h[0] === 'reporte' && h[1]) html = viewReporte(h[1]);
   else html = viewHome();
   app.innerHTML = html;
@@ -458,6 +473,8 @@ function viewHome() {
   if (!snapshot) html += `<div class="note info">Todavía no hay datos descargados. Tocá el indicador de arriba para sincronizar.</div>`;
   if (failed.length) html += `<div class="note bad"><b>${failed.length} registro(s) rechazado(s) por el servidor.</b> <a href="#" data-act="showFailed">Ver detalle</a></div>`;
 
+  if (nivel() >= 4) html += `<a class="card row" href="#/panel" style="border-color:var(--bad)"><div class="grow"><div class="b">Panel de control</div><div class="small muted">Corregir o borrar datos, proveedores e insumos</div></div><span class="chip bad">Admin</span></a>`;
+  if (nivel() >= 2) html += `<a class="card row" href="#/recepcion"><div class="grow"><div class="b">Recepción de materia prima</div><div class="small muted">Registrar lotes de insumos recibidos</div></div><span>→</span></a>`;
   html += `<h2>Tareas para hoy</h2>`;
   html += tareas.length ? `<div class="card list">${tareas.map(({ l, p, d }) => `
     <a class="li row" href="#/lote/${encodeURIComponent(l.id_lote)}/proceso" style="text-decoration:none;color:inherit">
@@ -853,6 +870,222 @@ function viewReporte(id) {
   ${labs.length ? `<h2>Laboratorio</h2><div class="card scroll"><table class="t"><tr><th>Parámetro</th><th class="n">Valor</th><th>Método</th><th>Laboratorio</th></tr>
   ${labs.map(a => `<tr><td>${esc(a.parametro)}</td><td class="n">${esc(a.valor)} ${esc(a.unidad)}</td><td class="small">${esc(a.metodo)}</td><td class="small">${esc(a.laboratorio)} ${esc(a.protocolo)} · ${fd(a.fecha)}</td></tr>`).join('')}</table></div>` : ''}
   <p class="small muted">Generado el ${fdt(nowIso())} por ${esc(session.nombre)}.</p></div>`;
+}
+
+/* ============================================================
+   Recepción de materia prima (Supervisor o superior)
+   ============================================================ */
+function viewRecepcion() {
+  if (nivel() < 2) return `<div class="note warn">Solo un Supervisor o superior registra recepciones.</div>`;
+  const recientes = S.Lotes_Insumo.slice().sort((a, b) => String(b.fecha_recepcion).localeCompare(String(a.fecha_recepcion))).slice(0, 30);
+  const hoy = toLocalInput(new Date()).slice(0, 10);
+  return `<h1>Recepción de materia prima</h1>
+  <form class="card" data-form="recepcion" id="fRec">
+    <label class="f">Insumo<select class="in" name="insumo" required data-live="recUnidad"><option value="">—</option>${insumosOpts()}</select></label>
+    <label class="f">Proveedor<select class="in" name="proveedor"><option value="">—</option>${S.Proveedores.map(p => `<option value="${esc(p.id_proveedor)}">${esc(p.nombre)}</option>`).join('')}</select></label>
+    <label class="f">Lote del proveedor<input class="in" name="lote" required placeholder="Ej. ALC-7781"></label>
+    <div class="grid2"><label class="f">Cantidad recibida <span class="h" id="recU"></span><input class="in" name="cantidad" inputmode="decimal"></label>
+    <label class="f">Fecha de recepción<input class="in" type="date" name="fecha" value="${hoy}" required></label></div>
+    <label class="f">Vencimiento <span class="h">(opcional)</span><input class="in" type="date" name="venc"></label>
+    <label class="f">Notas <span class="h">(opcional)</span><textarea class="in" name="notas"></textarea></label>
+    <div class="btns"><a class="btn" href="#/">Volver</a><button class="btn primary">Registrar</button></div>
+  </form>
+  <h2>Últimas recepciones</h2>
+  ${recientes.length ? `<div class="card list">${recientes.map(x => { const i = insumo(x.id_insumo); const p = find('Proveedores', 'id_proveedor', x.id_proveedor);
+    return `<div class="li small"><b>${esc(i.nombre)}</b> · lote ${esc(x.lote_proveedor)}${p ? ' · ' + esc(p.nombre) : ''}${pendMark(x)}<br><span class="muted">${x.fecha_recepcion ? fd(x.fecha_recepcion) : 'sin fecha'}${x.cantidad_recibida !== '' && x.cantidad_recibida != null ? ' · ' + fmt(x.cantidad_recibida) + ' ' + esc(i.unidad) : ''}${x.vencimiento ? ' · vence ' + fd(x.vencimiento) : ''}</span></div>`; }).join('')}</div>` : '<p class="muted">Sin recepciones registradas.</p>'}`;
+}
+const insumosOpts = sel => S.Insumos.filter(i => truthy(i.activo) || same(i.id_insumo, sel)).map(i => `<option value="${esc(i.id_insumo)}" ${same(i.id_insumo, sel) ? 'selected' : ''}>${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('');
+const dateToIso = v => v ? new Date(v + 'T12:00:00').toISOString() : '';
+LIVE.recUnidad = el => { $('#recU').textContent = el.value ? '(' + insumo(el.value).unidad + ')' : ''; };
+FORMS.recepcion = (d, f) => {
+  const q = num(d.cantidad);
+  if (d.cantidad && isNaN(q)) { toast('Cantidad inválida'); return; }
+  if (S.Lotes_Insumo.some(x => same(x.id_insumo, d.insumo) && same(String(x.lote_proveedor).trim().toUpperCase(), d.lote.toUpperCase()))
+      && !confirm('Ese lote ya está registrado para este insumo. ¿Registrarlo de nuevo?')) return;
+  enqueue([{ type: 'insert', table: 'Lotes_Insumo', row: { id_lote_insumo: uid('LI'), id_insumo: d.insumo, id_proveedor: d.proveedor || '', lote_proveedor: d.lote,
+    fecha_recepcion: dateToIso(d.fecha), cantidad_recibida: isNaN(q) ? '' : q, vencimiento: dateToIso(d.venc), notas: d.notas || '' } }]);
+  toast('Recepción registrada');
+};
+
+/* ============================================================
+   Panel de control (solo Admin). Todo cambio pide motivo y queda en la pestaña Auditoria.
+   ============================================================ */
+const opt = (v, t, sel) => `<option value="${esc(v)}" ${same(v, sel) ? 'selected' : ''}>${esc(t)}</option>`;
+const optList = (arr, sel, blank = true) => (blank ? opt('', '—', sel) : '') + arr.map(a => Array.isArray(a) ? opt(a[0], a[1], sel) : opt(a, a, sel)).join('');
+const SCHEMA = {
+  Lotes: { t: 'Lote', f: [
+    ['id_receta', 'Receta', 'select', () => S.Recetas.map(r => [r.id_receta, recetaLabel(r) + ' (' + r.estado + ')'])],
+    ['fecha_hora_inicio', 'Inicio', 'dt'], ['litros_netos_objetivo', 'Litros netos objetivo', 'num'], ['litros_brutos', 'Litros brutos', 'num'],
+    ['etapa', 'Etapa', 'select', () => ETAPAS], ['responsable', 'Responsable', 'text'], ['litros_obtenidos', 'Litros obtenidos', 'num'],
+    ['estado_final', 'Estado final', 'select', () => ['Aprobado', 'Reprocesar', 'Descartado']], ['aprobado_por', 'Aprobado por', 'text'],
+    ['fecha_aprobacion', 'Fecha de aprobación', 'dt'], ['motivo', 'Motivo de la decisión', 'area'], ['cant_botellas', 'Botellas', 'num'],
+    ['formato_ml', 'Formato (ml)', 'num'], ['lote_etiqueta', 'Lote en etiqueta', 'text'], ['notas', 'Notas', 'area']] },
+  Lote_Items: { t: 'Insumo del lote', f: [['cant_teorica', 'Cantidad teórica', 'num']] },
+  Cargas: { t: 'Carga', f: [['cantidad', 'Cantidad', 'num'],
+    ['id_lote_insumo', 'Lote del insumo', 'select', r => { const it = find('Lote_Items', 'id_lote_item', r.id_lote_item) || {};
+      return S.Lotes_Insumo.filter(x => same(x.id_insumo, it.id_insumo)).map(x => [x.id_lote_insumo, x.lote_proveedor]); }],
+    ['fecha_hora', 'Fecha y hora', 'dt'], ['operario', 'Operario', 'text'], ['observacion', 'Observación', 'area']] },
+  Pasos_Lote: { t: 'Paso', f: [['fecha_prevista', 'Previsto', 'dt'], ['realizado', 'Realizado', 'bool'], ['fecha_hora_real', 'Realizado el', 'dt'],
+    ['operario', 'Operario', 'text'], ['notas', 'Notas', 'area']] },
+  Eventos: { t: 'Evento', f: [['tipo', 'Tipo', 'select', () => TIPOS_EVENTO], ['fecha_hora', 'Fecha y hora', 'dt'], ['tipo_filtro', 'Tipo de filtro', 'text'],
+    ['litros', 'Litros', 'num'], ['operario', 'Operario', 'text'], ['notas', 'Notas', 'area']] },
+  Controles: { t: 'Control', f: [['momento', 'Momento', 'select', () => ['Día 0', 'Intermedio', 'Escurrido', 'Final']], ['fecha_hora', 'Fecha y hora', 'dt'],
+    ['temperatura_c', 'Temperatura (°C)', 'num'], ['densidad_g_ml', 'Densidad (g/mL)', 'num'], ['brix', 'Brix', 'num'],
+    ['color_vs_ref', 'Color vs referencia', 'select', () => COMPARA], ['sabor_vs_ref', 'Sabor vs referencia', 'select', () => COMPARA],
+    ['id_lote_referencia', 'Lote de referencia', 'select', () => S.Lotes.map(l => l.id_lote)], ['operario', 'Operario', 'text'], ['notas', 'Notas', 'area']] },
+  Lotes_Insumo: { t: 'Lote de materia prima', f: [['id_insumo', 'Insumo', 'select', () => S.Insumos.map(i => [i.id_insumo, i.nombre])],
+    ['id_proveedor', 'Proveedor', 'select', () => S.Proveedores.map(p => [p.id_proveedor, p.nombre])], ['lote_proveedor', 'Lote del proveedor', 'text'],
+    ['fecha_recepcion', 'Fecha de recepción', 'date'], ['cantidad_recibida', 'Cantidad recibida', 'num'], ['vencimiento', 'Vencimiento', 'date'], ['notas', 'Notas', 'area']] },
+  Proveedores: { t: 'Proveedor', f: [['nombre', 'Nombre', 'text'], ['pais', 'País', 'text'], ['contacto', 'Contacto', 'text'], ['notas', 'Notas', 'area']] },
+  Insumos: { t: 'Insumo', f: [['nombre', 'Nombre', 'text'], ['categoria', 'Categoría', 'select', () => ['Alcohol', 'Agua', 'Endulzante', 'Hierba', 'Botánico', 'Envase', 'Otro']],
+    ['unidad', 'Unidad de trabajo', 'select', () => ['L', 'kg', 'g', 'un']], ['provisto_por_cliente', 'Provisto por el cliente', 'bool'],
+    ['requiere_lote', 'Requiere lote', 'bool'], ['activo', 'Activo', 'bool']] }
+};
+function fieldInput(name, label, type, src, v, row) {
+  let inp;
+  if (type === 'select') inp = `<select class="in" name="${name}">${optList(src(row || {}), v)}</select>`;
+  else if (type === 'bool') inp = `<select class="in" name="${name}">${optList([['true', 'Sí'], ['false', 'No']], truthy(v) ? 'true' : 'false', false)}</select>`;
+  else if (type === 'dt') inp = `<input class="in" type="datetime-local" name="${name}" value="${toDate(v) ? toLocalInput(toDate(v)) : ''}">`;
+  else if (type === 'date') inp = `<input class="in" type="date" name="${name}" value="${toDate(v) ? toLocalInput(toDate(v)).slice(0, 10) : ''}">`;
+  else if (type === 'area') inp = `<textarea class="in" name="${name}">${esc(v)}</textarea>`;
+  else inp = `<input class="in" name="${name}" ${type === 'num' ? 'inputmode="decimal"' : ''} value="${esc(type === 'num' && v !== '' && v != null ? String(v).replace('.', ',') : v)}">`;
+  return `<label class="f">${esc(label)}${inp}</label>`;
+}
+function parseField(type, raw) {
+  if (type === 'num') { if (raw === '') return ''; const n = num(raw); return isNaN(n) ? undefined : n; }
+  if (type === 'bool') return raw === 'true';
+  if (type === 'dt') return raw ? fromLocalInput(raw) : '';
+  if (type === 'date') return dateToIso(raw);
+  return raw;
+}
+function sameVal(type, a, b) {
+  if (type === 'dt' || type === 'date') { const x = toDate(a), y = toDate(b); return (!x && !y) || (x && y && Math.abs(x - y) < 60000); }
+  if (type === 'num') return (a === '' || a == null) ? (b === '' || b == null) : num(a) === num(b);
+  if (type === 'bool') return truthy(a) === truthy(b);
+  return String(a == null ? '' : a) === String(b == null ? '' : b);
+}
+ACTIONS.adminEdit = d => {
+  const sc = SCHEMA[d.t]; const row = find(d.t, KEYS[d.t], d.k);
+  if (!row) { toast('No se encontró el registro'); return; }
+  openModal(`<h2 style="margin-top:0">Corregir ${esc(sc.t.toLowerCase())}</h2><p class="small muted">${esc(d.k)}</p>
+    <form data-form="adminEdit" data-t="${esc(d.t)}" data-k="${esc(d.k)}">
+      ${sc.f.map(([n, l, ty, src]) => fieldInput(n, l, ty, src, row[n], row)).join('')}
+      <label class="f">Motivo de la corrección <span class="h">(queda en Auditoría)</span><input class="in" name="__motivo" required></label>
+      <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary">Guardar corrección</button></div></form>`);
+};
+FORMS.adminEdit = (d, f) => {
+  const t = f.dataset.t, k = f.dataset.k; const sc = SCHEMA[t]; const row = find(t, KEYS[t], k);
+  const fields = {};
+  for (const [n, l, ty] of sc.f) {
+    const v = parseField(ty, d[n] == null ? '' : d[n]);
+    if (v === undefined) { toast('Valor inválido en ' + l); return; }
+    if (!sameVal(ty, row[n], v)) fields[n] = v;
+  }
+  if (!Object.keys(fields).length) { toast('No hay cambios'); return; }
+  enqueue([{ type: 'update', table: t, key: k, fields, admin: true, motivo: d.__motivo }]);
+  closeModal(); toast('Corrección guardada');
+};
+ACTIONS.adminDel = d => openModal(`<h2 style="margin-top:0">Borrar ${esc(SCHEMA[d.t].t.toLowerCase())}</h2>
+  <p>${esc(d.desc || d.k)}</p><div class="note bad">Se borra de la planilla. Queda una copia en la pestaña Auditoría.</div>
+  <form data-form="adminDel" data-t="${esc(d.t)}" data-k="${esc(d.k)}">
+    <label class="f">Motivo<input class="in" name="motivo" required></label>
+    <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn danger">Borrar</button></div></form>`);
+FORMS.adminDel = (d, f) => { enqueue([{ type: 'delete', table: f.dataset.t, key: f.dataset.k, admin: true, motivo: d.motivo }]); closeModal(); toast('Borrado'); };
+ACTIONS.adminDelLote = d => openModal(`<h2 style="margin-top:0">Eliminar lote ${esc(d.k)}</h2>
+  <div class="note bad">Se borran el lote y <b>todos</b> sus registros: insumos, cargas, pasos, bitácora, controles y análisis. No se puede deshacer desde la app (queda una copia de la cabecera en Auditoría).<br>Para un lote real que salió mal, lo correcto es cerrarlo como <b>Descartado</b>.</div>
+  <form data-form="adminDelLote" data-k="${esc(d.k)}">
+    <label class="f">Escribí el número de lote para confirmar<input class="in" name="confirm" autocomplete="off" required></label>
+    <label class="f">Motivo<input class="in" name="motivo" required placeholder="Ej. lote de prueba"></label>
+    <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn danger">Eliminar lote</button></div></form>`);
+FORMS.adminDelLote = (d, f) => {
+  if (d.confirm !== f.dataset.k) { toast('El número no coincide'); return; }
+  enqueue([{ type: 'deleteLote', key: f.dataset.k, admin: true, motivo: d.motivo }]);
+  closeModal(); location.hash = '#/panel'; toast('Lote eliminado');
+};
+ACTIONS.adminNew = d => {
+  const sc = SCHEMA[d.t];
+  openModal(`<h2 style="margin-top:0">Nuevo ${esc(sc.t.toLowerCase())}</h2>
+    <form data-form="adminNew" data-t="${esc(d.t)}">${sc.f.map(([n, l, ty, src]) => fieldInput(n, l, ty, src, ty === 'bool' ? (n === 'provisto_por_cliente' ? false : true) : '', {})).join('')}
+    <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary">Crear</button></div></form>`);
+};
+function nextId(t, pre, width) {
+  const key = KEYS[t]; let max = 0;
+  S[t].forEach(r => { const m = String(r[key]).match(new RegExp('^' + pre + '-(\\d+)$')); if (m) max = Math.max(max, +m[1]); });
+  return pre + '-' + String(max + 1).padStart(width, '0');
+}
+FORMS.adminNew = (d, f) => {
+  const t = f.dataset.t; const sc = SCHEMA[t]; const row = {};
+  for (const [n, l, ty] of sc.f) { const v = parseField(ty, d[n] == null ? '' : d[n]); if (v === undefined) { toast('Valor inválido en ' + l); return; } row[n] = v; }
+  if (!row.nombre && t !== 'Lotes_Insumo') { toast('Falta el nombre'); return; }
+  if (t === 'Proveedores') row.id_proveedor = nextId('Proveedores', 'PRV', 3);
+  else if (t === 'Insumos') { if (!row.unidad) { toast('Elegí la unidad'); return; } row.id_insumo = nextId('Insumos', 'INS', 3); }
+  else if (t === 'Lotes_Insumo') { if (!row.id_insumo || !row.lote_proveedor) { toast('Faltan insumo y lote'); return; } row.id_lote_insumo = uid('LI'); }
+  enqueue([{ type: 'insert', table: t, row }]); closeModal(); toast('Creado');
+};
+
+function adminGuard() { return nivel() >= 4 ? '' : `<div class="note warn">El panel de control es solo para usuarios Admin.</div><a class="btn" href="#/">Volver</a>`; }
+function viewPanel() {
+  const g = adminGuard(); if (g) return g;
+  const lotes = S.Lotes.slice().sort((a, b) => String(b.fecha_hora_inicio).localeCompare(String(a.fecha_hora_inicio)));
+  return `<h1>Panel de control</h1>
+  <div class="note bad">Modo administrador: cada corrección o borrado pide un motivo y queda registrado en la pestaña <b>Auditoria</b> de la planilla.</div>
+  <h2>Datos maestros</h2>
+  <div class="card list">
+    <a class="li row" href="#/panel/tabla/Lotes_Insumo" style="text-decoration:none;color:inherit"><div class="grow b">Materia prima recibida</div><span class="muted">${S.Lotes_Insumo.length} →</span></a>
+    <a class="li row" href="#/panel/tabla/Proveedores" style="text-decoration:none;color:inherit"><div class="grow b">Proveedores</div><span class="muted">${S.Proveedores.length} →</span></a>
+    <a class="li row" href="#/panel/tabla/Insumos" style="text-decoration:none;color:inherit"><div class="grow b">Insumos</div><span class="muted">${S.Insumos.length} →</span></a>
+  </div>
+  <p class="small muted">Las recetas y los usuarios se editan en la planilla.</p>
+  <h2>Lotes</h2>
+  <div class="card list">${lotes.map(l => `<a class="li row" href="#/panel/lote/${encodeURIComponent(l.id_lote)}" style="text-decoration:none;color:inherit">
+    <div class="grow"><div class="b">${esc(l.id_lote)}${pendMark(l)}</div><div class="small muted">${fd(l.fecha_hora_inicio)} · ${esc(recetaLabel(receta(l.id_receta)))}</div></div>
+    ${chipEtapa(l.etapa)} ${chipEstado(l.estado_final)}</a>`).join('') || '<p class="muted">Sin lotes.</p>'}</div>`;
+}
+function viewPanelTabla(t) {
+  const g = adminGuard(); if (g) return g;
+  const sc = SCHEMA[t]; if (!sc || !['Lotes_Insumo', 'Proveedores', 'Insumos'].includes(t)) return `<div class="note warn">Tabla no disponible.</div>`;
+  const key = KEYS[t];
+  const label = r => t === 'Lotes_Insumo' ? `${insumo(r.id_insumo).nombre} · lote ${r.lote_proveedor}` : r.nombre;
+  const sub = r => t === 'Lotes_Insumo' ? `${(find('Proveedores', 'id_proveedor', r.id_proveedor) || {}).nombre || 'sin proveedor'} · ${r.fecha_recepcion ? fd(r.fecha_recepcion) : 'sin fecha'}`
+    : t === 'Insumos' ? `${r.categoria || ''} · ${r.unidad}${truthy(r.activo) ? '' : ' · inactivo'}` : `${r.pais || ''} ${r.contacto ? '· ' + r.contacto : ''}`;
+  const rows = S[t].slice().sort((a, b) => t === 'Lotes_Insumo' ? String(b.fecha_recepcion).localeCompare(String(a.fecha_recepcion)) : String(a.nombre).localeCompare(String(b.nombre)));
+  const used = r => t === 'Lotes_Insumo' ? S.Cargas.some(c => same(c.id_lote_insumo, r[key]))
+    : t === 'Proveedores' ? S.Lotes_Insumo.some(x => same(x.id_proveedor, r[key])) : S.Receta_Items.some(x => same(x.id_insumo, r[key])) || S.Lote_Items.some(x => same(x.id_insumo, r[key]));
+  return `<div class="row"><a class="btn sm" href="#/panel">← Panel</a><span class="grow"></span><button class="btn primary sm" data-act="adminNew" data-t="${t}">＋ Nuevo</button></div>
+  <h1 style="margin-top:12px">${{ Lotes_Insumo: 'Materia prima recibida', Proveedores: 'Proveedores', Insumos: 'Insumos' }[t]}</h1>
+  ${t === 'Insumos' ? '<p class="small muted">Para dejar de usar un insumo, marcalo como inactivo en lugar de borrarlo.</p>' : ''}
+  <div class="card list">${rows.map(r => `<div class="li row"><div class="grow"><div class="b">${esc(label(r))}${pendMark(r)}</div><div class="small muted">${esc(sub(r))}</div></div>
+    <button class="btn sm" data-act="adminEdit" data-t="${t}" data-k="${esc(r[key])}">Editar</button>
+    ${used(r) ? '' : `<button class="btn sm del" data-act="adminDel" data-t="${t}" data-k="${esc(r[key])}" data-desc="${esc(label(r))}">Borrar</button>`}</div>`).join('') || '<p class="muted">Sin registros.</p>'}</div>
+  <p class="small muted">Los registros que ya se usaron en producción no se pueden borrar, solo corregir.</p>`;
+}
+function viewPanelLote(id) {
+  const g = adminGuard(); if (g) return g;
+  const l = lote(id); if (!l) return `<div class="note warn">No se encontró el lote ${esc(id)} (puede haber sido eliminado).</div><a class="btn" href="#/panel">← Panel</a>`;
+  const its = itemsOf(id);
+  const btn = (t, k, desc, del = true) => `<button class="btn sm" data-act="adminEdit" data-t="${t}" data-k="${esc(k)}">Editar</button>${del ? `<button class="btn sm del" data-act="adminDel" data-t="${t}" data-k="${esc(k)}" data-desc="${esc(desc)}">Borrar</button>` : ''}`;
+  const cargas = its.flatMap(it => cargasOf(it.id_lote_item).map(c => ({ c, it }))).sort((a, b) => String(a.c.fecha_hora).localeCompare(String(b.c.fecha_hora)));
+  const ev = S.Eventos.filter(e => same(e.id_lote, id)); const cs = S.Controles.filter(c => same(c.id_lote, id));
+  return `<div class="row"><a class="btn sm" href="#/panel">← Panel</a><span class="grow"></span><a class="btn sm" href="#/lote/${encodeURIComponent(id)}">Ver lote</a></div>
+  <h1 style="margin-top:12px">Corregir lote ${esc(id)}</h1>
+  <div class="btns" style="margin-top:0"><button class="btn" data-act="adminEdit" data-t="Lotes" data-k="${esc(id)}">Editar datos del lote</button>
+    <button class="btn danger" data-act="adminDelLote" data-k="${esc(id)}">Eliminar lote</button></div>
+  <h2>Cargas (${cargas.length})</h2>
+  <div class="card list">${cargas.map(({ c, it }) => { const ins = insumo(it.id_insumo); const li = find('Lotes_Insumo', 'id_lote_insumo', c.id_lote_insumo);
+    return `<div class="li"><div class="b">${esc(ins.nombre)} · ${fmt(c.cantidad)} ${esc(ins.unidad)}${pendMark(c)}</div>
+    <div class="small muted">${fdt(c.fecha_hora)} · ${esc(c.operario || '')}${li ? ' · lote ' + esc(li.lote_proveedor) : ''}${c.observacion ? ' · ' + esc(c.observacion) : ''}</div>
+    <div class="row" style="margin-top:6px">${btn('Cargas', c.id_carga, ins.nombre + ' ' + fmt(c.cantidad) + ' ' + ins.unidad + ' · ' + fdt(c.fecha_hora))}</div></div>`; }).join('') || '<p class="muted">Sin cargas.</p>'}</div>
+  <h2>Cantidades teóricas</h2>
+  <div class="card list">${its.map(it => { const ins = insumo(it.id_insumo); return `<div class="li row"><div class="grow">${esc(ins.nombre)} <span class="muted small">${esc(it.uso)}</span><div class="b">${fmt(it.cant_teorica)} ${esc(ins.unidad)}${pendMark(it)}</div></div>${btn('Lote_Items', it.id_lote_item, '', false)}</div>`; }).join('')}</div>
+  <h2>Pasos</h2>
+  <div class="card list">${pasosOf(id).map(p => `<div class="li row"><div class="grow">${esc(pasoDef(p.id_paso).descripcion || p.id_paso)}${pendMark(p)}<div class="small muted">${truthy(p.realizado) ? 'hecho ' + fdt(p.fecha_hora_real) : 'previsto ' + fdt(p.fecha_prevista)}</div></div>${btn('Pasos_Lote', p.id_paso_lote, '', false)}</div>`).join('') || '<p class="muted">Sin pasos.</p>'}</div>
+  <h2>Bitácora</h2>
+  <div class="card list">${ev.map(e => `<div class="li"><div><span class="chip info">${esc(e.tipo)}</span> <span class="small muted">${fdt(e.fecha_hora)}</span>${pendMark(e)}</div><div class="small">${esc(e.notas || '')}</div>
+    <div class="row" style="margin-top:6px">${btn('Eventos', e.id_evento, e.tipo + ' · ' + fdt(e.fecha_hora))}</div></div>`).join('') || '<p class="muted">Sin eventos.</p>'}</div>
+  <h2>Controles</h2>
+  <div class="card list">${cs.map(c => `<div class="li"><div><span class="chip info">${esc(c.momento)}</span> <span class="small muted">${fdt(c.fecha_hora)}</span>${pendMark(c)}</div>
+    <div class="small">Densidad ${fdens(c.densidad_g_ml)} · Brix ${fmt(c.brix, 1)} · ${fmt(c.temperatura_c, 1)} °C</div>
+    <div class="row" style="margin-top:6px">${btn('Controles', c.id_control, c.momento + ' · ' + fdt(c.fecha_hora))}</div></div>`).join('') || '<p class="muted">Sin controles.</p>'}</div>`;
 }
 
 /* ============================================================
