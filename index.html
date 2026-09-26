@@ -125,7 +125,7 @@ table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
 // Pegá acá la URL de la implementación de Apps Script (termina en /exec).
 // Si queda vacía, la app la pide la primera vez.
 const DEFAULT_API = '';
-const APP_VERSION = '2026-09-26 v5';
+const APP_VERSION = '2026-09-26 v6';
 
 const ETAPAS = ['Carga', 'Maceración', 'Escurrido', 'Filtrado', 'Control', 'Cerrado'];
 const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
@@ -374,7 +374,7 @@ ACTIONS.userMenu = () => openModal(`
   <p class="muted">Rol: ${esc(session.rol)} · ${queue.length} operaciones sin enviar${lastSync ? ' · Última sincronización ' + fdt(lastSync) : ''} · versión ${APP_VERSION}</p>
   ${lastError ? `<div class="note warn">${esc(lastError)}</div>` : ''}
   <div class="btns"><button class="btn" data-act="close">Cerrar</button><button class="btn danger" data-act="logout">Cambiar de usuario</button></div>`);
-ACTIONS.logout = () => { session = null; LS.set('session', null); closeModal(); location.hash = '#/'; render(); };
+ACTIONS.logout = () => { viewLogin.fresh = false; session = null; LS.set('session', null); closeModal(); location.hash = '#/'; render(); };
 
 /* ============================================================
    Vistas
@@ -419,9 +419,11 @@ FORMS.config = async d => {
 /* ---------- ingreso ---------- */
 let loginSel = '';
 function viewLogin() {
-  if (!users.length && navigator.onLine && !viewLogin.loading) {
+  // Con conexión, la lista de usuarios se actualiza cada vez que se abre esta pantalla
+  if (navigator.onLine && !viewLogin.loading && !viewLogin.fresh) {
     viewLogin.loading = true;
-    call({ action: 'users' }, 30000).then(r => { if (r.ok) { users = r.users; LS.set('users', users); } }).catch(() => {}).finally(() => { viewLogin.loading = false; render(); });
+    call({ action: 'users' }, 30000).then(r => { if (r.ok) { users = r.users; LS.set('users', users); viewLogin.fresh = true; } })
+      .catch(() => {}).finally(() => { viewLogin.loading = false; if (!session) render(); });
   }
   const list = users.length ? `<div class="users">${users.map(u => `<button type="button" class="${same(u.nombre, loginSel) ? 'on' : ''}" data-act="pickUser" data-n="${esc(u.nombre)}">${esc(u.nombre)}<br><span class="small muted">${esc(u.rol)}</span></button>`).join('')}</div>`
     : `<p class="muted">${viewLogin.loading ? 'Cargando usuarios…' : 'Sin conexión: no hay usuarios guardados en este equipo. El primer ingreso necesita internet.'}</p>`;

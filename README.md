@@ -87,7 +87,7 @@ Recetas y usuarios se editan directamente en la planilla.
 ## Cambios futuros
 
 - **Si cambiás `Code.gs`:** Implementar → Gestionar implementaciones → ✏️ → Versión: **Nueva versión** → Implementar. La URL no cambia.
-- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v5` → `go-v6`) (así los celulares toman la versión nueva).
+- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v6` → `go-v7`) (así los celulares toman la versión nueva).
 - **Receta nueva o ajustada:** agregá la versión en *Recetas*, *Receta_Items* y *Pasos* con estado *Vigente* y pasá la anterior a *Obsoleta*. Los lotes viejos conservan la receta con la que se hicieron.
 
 ## Limpieza opcional
