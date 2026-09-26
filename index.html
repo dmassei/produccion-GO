@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F3A5F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Producción GO">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Producción GO</title>
+<style>
+:root{
+  --bg:#F3F5F8; --card:#FFFFFF; --ink:#1B2430; --muted:#5B6776; --line:#DCE2EA;
+  --brand:#1F3A5F; --brand-2:#2E5A8C; --accent:#E8EEF6;
+  --ok:#1E7B4B; --ok-bg:#E3F4EA; --warn:#9A6200; --warn-bg:#FFF3D6;
+  --bad:#B42318; --bad-bg:#FDE7E5; --info:#1F5FA8; --info-bg:#E4EEFA;
+  --r:12px; --tap:48px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10151C; --card:#1A212B; --ink:#E7ECF2; --muted:#9AA6B4; --line:#2B3542;
+    --brand:#16283F; --brand-2:#6FA3E0; --accent:#1F2A38;
+    --ok:#5CCB8F; --ok-bg:#15301F; --warn:#F2C064; --warn-bg:#342914;
+    --bad:#FF8A80; --bad-bg:#3A1A18; --info:#8DBBF0; --info-bg:#18283C;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+header.top{position:sticky;top:0;z-index:20;background:var(--brand);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px}
+header.top .t{font-weight:700;font-size:18px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header.top a{color:#fff;text-decoration:none}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;font-size:13px;font-weight:600;background:rgba(255,255,255,.14);color:#fff;border:0;min-height:34px;cursor:pointer}
+.dot{width:9px;height:9px;border-radius:50%;background:#7BE0A6;flex:none}
+.dot.off{background:#FFB25B}.dot.err{background:#FF7B72}.dot.busy{background:#9CC8FF;animation:bl 1s infinite}
+@keyframes bl{50%{opacity:.35}}
+main{max-width:860px;margin:0 auto;padding:16px 16px 96px}
+h1{font-size:22px;margin:4px 0 12px}
+h2{font-size:17px;margin:22px 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:0 0 12px}
+a.card{display:block;text-decoration:none;color:inherit}
+.row{display:flex;align-items:center;gap:10px}
+.grow{flex:1;min-width:0}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.b{font-weight:700}
+.chip{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;background:var(--accent);color:var(--brand-2);white-space:nowrap}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}.chip.info{background:var(--info-bg);color:var(--info)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:var(--tap);padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-weight:600;cursor:pointer;text-decoration:none;color:var(--ink)}
+.btn.primary{background:var(--brand-2);border-color:var(--brand-2);color:#fff}
+.btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.block{width:100%}
+.btn:disabled{opacity:.5}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.btns .btn{flex:1}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:0 -16px 14px;padding:0 16px;scrollbar-width:none}
+.tabs a{flex:none;padding:10px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:600;font-size:14px}
+.tabs a.on{background:var(--brand-2);border-color:var(--brand-2);color:#fff}
+.bar{height:8px;border-radius:99px;background:var(--accent);overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--brand-2)}
+.bar.ok i{background:var(--ok)}.bar.bad i{background:var(--bad)}.bar.warn i{background:var(--warn)}
+.item{cursor:pointer}
+.item .q{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.item .q div{background:var(--bg);border-radius:8px;padding:6px 8px}
+.item .q span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.item .q b{font-size:16px}
+label.f{display:block;margin:12px 0 0;font-size:14px;font-weight:600}
+label.f .h{font-weight:400;color:var(--muted);font-size:13px}
+.in{width:100%;min-height:var(--tap);border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card);margin-top:6px;font-size:17px}
+textarea.in{min-height:84px;font-size:16px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.in{min-width:0}
+.note{border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.note.warn{background:var(--warn-bg);color:var(--warn)}.note.bad{background:var(--bad-bg);color:var(--bad)}
+.note.ok{background:var(--ok-bg);color:var(--ok)}.note.info{background:var(--info-bg);color:var(--info)}
+table.t{width:100%;border-collapse:collapse;font-size:14px}
+table.t th,table.t td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+table.t th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
+.scroll{overflow-x:auto}
+.list .li{padding:10px 0;border-bottom:1px solid var(--line)}
+.list .li:last-child{border-bottom:0}
+.users{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.users button{min-height:64px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-weight:700;cursor:pointer;padding:8px}
+.users button.on{border:2px solid var(--brand-2);background:var(--info-bg)}
+.fab{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 16px);z-index:15;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+#modal{position:fixed;inset:0;z-index:50;display:none;background:rgba(10,16,24,.55);align-items:flex-end;justify-content:center}
+#modal.on{display:flex}
+#modal .box{background:var(--card);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom) + 18px)}
+@media (min-width:700px){#modal{align-items:center}#modal .box{border-radius:18px}}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 84px);transform:translateX(-50%);background:#1B2430;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;display:none;max-width:90vw}
+.pend{color:var(--warn);font-size:12px;font-weight:700}
+.report h1{font-size:20px}
+.report .card{break-inside:avoid}
+@media print{
+  header.top,.tabs,.fab,.noprint,#toast{display:none!important}
+  body{background:#fff;color:#000}
+  main{padding:0;max-width:none}
+  .card{border:0;padding:0 0 8px;margin:0 0 10px}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="t" href="#/">Producción GO</a>
+  <button class="pill" id="syncPill" data-act="syncNow" aria-label="Sincronizar"><span class="dot" id="syncDot"></span><span id="syncTxt">—</span></button>
+  <button class="pill" id="userPill" data-act="userMenu" hidden></button>
+</header>
+<main id="app"></main>
+<div id="modal" role="dialog" aria-modal="true"><div class="box" id="modalBox"></div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   Configuración
+   ============================================================ */
+// Pegá acá la URL de la implementación de Apps Script (termina en /exec).
+// Si queda vacía, la app la pide la primera vez.
+const DEFAULT_API = '';
+
+const ETAPAS = ['Carga', 'Maceración', 'Escurrido', 'Filtrado', 'Control', 'Cerrado'];
+const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
+const UMBRAL_RENDIMIENTO = 0.05;   // alerta si el rendimiento real difiere más de 5 puntos
+const TOL_DEFAULT = 0.02;
+const KEYS = { Lotes: 'id_lote', Lote_Items: 'id_lote_item', Pasos_Lote: 'id_paso_lote', Cargas: 'id_carga',
+  Eventos: 'id_evento', Controles: 'id_control', Lotes_Insumo: 'id_lote_insumo' };
+const TABLES = ['Recetas', 'Receta_Items', 'Pasos', 'Insumos', 'Lotes_Insumo', 'Productos', 'Proveedores',
+  'Lotes', 'Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab', 'Cargas'];
+
+/* ============================================================
+   Almacenamiento local (buffer offline)
+   ============================================================ */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('go.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('go.' + k, JSON.stringify(v)); } catch (e) { toast('No se pudo guardar en el dispositivo'); } }
+};
+(function readApiParam() {
+  const m = location.search.match(/[?&]api=([^&]+)/);
+  if (m) { LS.set('api', decodeURIComponent(m[1])); history.replaceState(null, '', location.pathname + location.hash); }
+})();
+let api = LS.get('api', '') || DEFAULT_API;
+let session = LS.get('session', null);     // {nombre, rol, nivel}
+let creds = LS.get('creds', {});           // {nombre: pin} de quienes ingresaron en este equipo
+let users = LS.get('users', []);           // [{nombre, rol}]
+let snapshot = LS.get('snapshot', null);   // última copia del servidor
+let queue = LS.get('queue', []);           // operaciones pendientes de enviar
+let failed = LS.get('failed', []);         // operaciones rechazadas por el servidor
+let lastSync = LS.get('lastSync', null);
+let lastError = '';
+let syncing = false;
+let S = null;                              // estado visible = snapshot + cola
+
+/* ============================================================
+   Utilidades
+   ============================================================ */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => (v === '' || v == null) ? NaN : (typeof v === 'number' ? v : parseFloat(String(v).replace(/\s/g, '').replace(',', '.')));
+const fmt = (v, d = 3) => isNaN(num(v)) ? '—' : num(v).toLocaleString('es-AR', { maximumFractionDigits: d });
+const pct = (v, d = 1) => (v == null || isNaN(v)) ? '—' : (v * 100).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }) + '%';
+const fdens = v => isNaN(num(v)) ? '—' : num(v).toLocaleString('es-AR', { minimumFractionDigits: 3, maximumFractionDigits: 4 });
+const sgn = (v, d) => isNaN(v) ? '—' : (v >= 0 ? '+' : '') + v.toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const pts = v => (v == null || isNaN(v)) ? '—' : ((v >= 0 ? '+' : '') + (v * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' pts');
+const truthy = v => v === true || v === 1 || String(v).toUpperCase() === 'TRUE';
+const toDate = v => { if (!v) return null; const d = new Date(v); return isNaN(d) ? null : d; };
+const fdt = v => { const d = toDate(v); return d ? d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'; };
+const fd = v => { const d = toDate(v); return d ? d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'; };
+const ft = v => { const d = toDate(v); return d ? d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—'; };
+const nowIso = () => new Date().toISOString();
+const uid = p => p + '-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+const toLocalInput = d => { const z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
+const fromLocalInput = s => { const d = new Date(s); return isNaN(d) ? nowIso() : d.toISOString(); };
+const nivel = () => session ? (NIVEL[session.rol] || 1) : 0;
+const same = (a, b) => String(a) === String(b);
+
+function toast(msg, ms = 2600) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.style.display = 'none', ms);
+}
+
+/* ============================================================
+   Estado: snapshot del servidor + operaciones en cola
+   ============================================================ */
+function emptyData() { const d = {}; TABLES.forEach(t => d[t] = []); return d; }
+function computeState() {
+  const d = emptyData();
+  if (snapshot) TABLES.forEach(t => d[t] = (snapshot[t] || []).map(r => Object.assign({}, r)));
+  queue.forEach(op => applyLocal(d, op));
+  S = d;
+}
+function applyLocal(d, op) {
+  const t = d[op.table] || (d[op.table] = []);
+  const key = KEYS[op.table];
+  if (op.type === 'insert') {
+    if (!t.some(r => same(r[key], op.row[key]))) t.push(Object.assign({ _pending: true }, op.row));
+  } else if (op.type === 'update') {
+    const r = t.find(r => same(r[key], op.key));
+    if (r) Object.assign(r, op.fields, { _pending: true });
+  }
+}
+function enqueue(ops) {
+  const at = nowIso();
+  ops.forEach(o => { o.id = uid('OP'); o.at = at; o.by = session.nombre; });
+  queue = queue.concat(ops);
+  LS.set('queue', queue);
+  render();
+  setTimeout(sync, 300);
+}
+
+/* ---------- consultas ---------- */
+const find = (t, key, id) => (S[t] || []).find(r => same(r[key], id));
+const insumo = id => find('Insumos', 'id_insumo', id) || { nombre: id || '—', unidad: '' };
+const receta = id => find('Recetas', 'id_receta', id);
+const lote = id => find('Lotes', 'id_lote', id);
+function recetaLabel(r) {
+  if (!r) return '—';
+  const p = find('Productos', 'id_producto', r.id_producto);
+  return `${p ? p.nombre : ''} · ${r.variante || ''} v${r.version || 1}`;
+}
+const itemsOf = id => S.Lote_Items.filter(i => same(i.id_lote, id)).sort((a, b) => num(a.orden_carga) - num(b.orden_carga));
+const cargasOf = id => S.Cargas.filter(c => same(c.id_lote_item, id)).sort((a, b) => String(a.fecha_hora).localeCompare(String(b.fecha_hora)));
+const pasoDef = id => find('Pasos', 'id_paso', id) || {};
+function pasosOf(id) {
+  return S.Pasos_Lote.filter(p => same(p.id_lote, id))
+    .sort((a, b) => (num(pasoDef(a.id_paso).orden) - num(pasoDef(b.id_paso).orden)) || String(a.fecha_prevista).localeCompare(String(b.fecha_prevista)));
+}
+function itemStatus(it) {
+  const cargado = cargasOf(it.id_lote_item).reduce((s, c) => s + (num(c.cantidad) || 0), 0);
+  const teo = num(it.cant_teorica) || 0;
+  const ri = find('Receta_Items', 'id_item', it.id_item);
+  let tol = ri ? num(ri.tolerancia) : NaN; if (isNaN(tol)) tol = TOL_DEFAULT;
+  const dev = teo ? (cargado - teo) / teo : 0;
+  let st = 'pendiente';
+  if (cargado > 0) st = Math.abs(dev) <= tol ? 'ok' : (dev > tol ? 'exceso' : 'parcial');
+  return { cargado, teo, pend: teo - cargado, dev, tol, st, ri };
+}
+function dayOf(l) { const d = toDate(l.fecha_hora_inicio); return d ? Math.floor((Date.now() - d) / 864e5) + 1 : null; }
+function pasoState(p) {
+  if (truthy(p.realizado)) return 'hecho';
+  const d = toDate(p.fecha_prevista);
+  return d && d < new Date() ? 'vencido' : 'pendiente';
+}
+function rendimiento(l) {
+  const ob = num(l.litros_obtenidos), br = num(l.litros_brutos);
+  const r = receta(l.id_receta); const esp = r ? num(r.rendimiento_esperado) : NaN;
+  const real = (!isNaN(ob) && br) ? ob / br : NaN;
+  return { real, esp, dif: real - esp, netosEsp: br * esp, ob };
+}
+function lastFinalControl(loteId) {
+  return S.Controles.filter(c => same(c.id_lote, loteId) && c.momento === 'Final')
+    .sort((a, b) => String(b.fecha_hora).localeCompare(String(a.fecha_hora)))[0];
+}
+const chipEtapa = e => `<span class="chip ${e === 'Cerrado' ? '' : 'info'}">${esc(e || '—')}</span>`;
+const chipEstado = e => e ? `<span class="chip ${e === 'Aprobado' ? 'ok' : e === 'Descartado' ? 'bad' : 'warn'}">${esc(e)}</span>` : '';
+const pendMark = r => r && r._pending ? ' <span class="pend" title="Pendiente de sincronizar">⟳</span>' : '';
+
+/* ============================================================
+   Comunicación con Apps Script
+   ============================================================ */
+async function call(payload, ms = 45000) {
+  if (!api) throw new Error('Falta configurar el servidor');
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(api, { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctl.signal, redirect: 'follow' });
+    const txt = await r.text();
+    try { return JSON.parse(txt); } catch (e) { throw new Error('Respuesta inválida del servidor'); }
+  } finally { clearTimeout(t); }
+}
+const AUTH_ERR = /PIN|Usuario no habilitado|intentos|Falta usuario/;
+
+async function sync(opts = {}) {
+  if (syncing || !api || !session) return;
+  syncing = true; lastError = ''; updatePill();
+  try {
+    if (queue.length === 0) {
+      const pin = creds[session.nombre];
+      const r = await call({ action: 'snapshot', user: session.nombre, pin });
+      if (!r.ok) throw new Error(r.error);
+      snapshot = r.data;
+    } else {
+      const groups = {};
+      queue.forEach(o => (groups[o.by] = groups[o.by] || []).push(o));
+      for (const by of Object.keys(groups)) {
+        const ops = groups[by];
+        const pin = creds[by];
+        const ids = new Set(ops.map(o => o.id));
+        if (!pin) { moveToFailed(ops, 'Sin credenciales guardadas para ' + by); continue; }
+        const r = await call({ action: 'sync', user: by, pin, ops: ops.map(({ id, type, table, row, key, fields }) => ({ id, type, table, row, key, fields })) });
+        if (!r.ok) {
+          if (AUTH_ERR.test(r.error || '')) { moveToFailed(ops, r.error); continue; }
+          throw new Error(r.error);
+        }
+        const bad = [];
+        r.results.forEach(x => { if (x.status === 'error') bad.push(Object.assign({}, ops.find(o => o.id === x.id), { error: x.error })); });
+        queue = queue.filter(o => !ids.has(o.id));
+        failed = failed.concat(bad);
+        snapshot = r.data;
+      }
+    }
+    lastSync = nowIso();
+    LS.set('snapshot', snapshot); LS.set('queue', queue); LS.set('failed', failed); LS.set('lastSync', lastSync);
+    if (opts.manual) toast('Sincronizado');
+  } catch (e) {
+    lastError = e.name === 'AbortError' ? 'Sin respuesta del servidor' : (navigator.onLine ? String(e.message || e) : 'Sin conexión');
+    if (opts.manual) toast(lastError);
+  } finally {
+    syncing = false; render();
+  }
+}
+function moveToFailed(ops, error) {
+  const ids = new Set(ops.map(o => o.id));
+  queue = queue.filter(o => !ids.has(o.id));
+  failed = failed.concat(ops.map(o => Object.assign({}, o, { error })));
+}
+function updatePill() {
+  const dot = $('#syncDot'), txt = $('#syncTxt');
+  dot.className = 'dot' + (syncing ? ' busy' : lastError ? (navigator.onLine ? ' err' : ' off') : (!navigator.onLine ? ' off' : ''));
+  const n = queue.length;
+  txt.textContent = syncing ? 'Sincronizando…' : n ? `${n} sin enviar` : (lastSync ? 'Al día ' + ft(lastSync) : (navigator.onLine ? 'En línea' : 'Sin conexión'));
+  const up = $('#userPill');
+  if (session) { up.hidden = false; up.textContent = session.nombre.split(' ')[0]; } else up.hidden = true;
+}
+window.addEventListener('online', () => { updatePill(); sync(); });
+window.addEventListener('offline', updatePill);
+setInterval(() => { if (navigator.onLine && (queue.length || Date.now() - new Date(lastSync || 0) > 5 * 60e3)) sync(); }, 60e3);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && navigator.onLine) sync(); });
+
+/* ============================================================
+   Modal y eventos
+   ============================================================ */
+function openModal(html) { $('#modalBox').innerHTML = html; $('#modal').classList.add('on'); const f = $('#modalBox [autofocus]'); if (f) setTimeout(() => f.focus(), 50); }
+function closeModal() { $('#modal').classList.remove('on'); $('#modalBox').innerHTML = ''; }
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+
+const ACTIONS = {}, FORMS = {};
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  const fn = ACTIONS[a.dataset.act]; if (fn) { e.preventDefault(); fn(a.dataset, a); }
+});
+document.addEventListener('submit', e => {
+  const f = e.target; const fn = FORMS[f.dataset.form]; if (!fn) return;
+  e.preventDefault();
+  const data = {}; new FormData(f).forEach((v, k) => data[k] = typeof v === 'string' ? v.trim() : v);
+  fn(data, f);
+});
+document.addEventListener('input', e => { const fn = e.target.dataset.live && LIVE[e.target.dataset.live]; if (fn) fn(e.target); });
+document.addEventListener('change', e => { const fn = e.target.dataset.live && LIVE[e.target.dataset.live]; if (fn) fn(e.target); });
+const LIVE = {};
+
+ACTIONS.close = closeModal;
+ACTIONS.syncNow = () => { if (!navigator.onLine) toast('Sin conexión: los datos quedan guardados en el equipo'); sync({ manual: true }); };
+ACTIONS.print = () => window.print();
+ACTIONS.userMenu = () => openModal(`
+  <h2 style="margin-top:0">${esc(session.nombre)}</h2>
+  <p class="muted">Rol: ${esc(session.rol)} · ${queue.length} operaciones sin enviar${lastSync ? ' · Última sincronización ' + fdt(lastSync) : ''}</p>
+  ${lastError ? `<div class="note warn">${esc(lastError)}</div>` : ''}
+  <div class="btns"><button class="btn" data-act="close">Cerrar</button><button class="btn danger" data-act="logout">Cambiar de usuario</button></div>`);
+ACTIONS.logout = () => { session = null; LS.set('session', null); closeModal(); location.hash = '#/'; render(); };
+
+/* ============================================================
+   Vistas
+   ============================================================ */
+function render() {
+  computeState(); updatePill();
+  const app = $('#app');
+  if (!api) { app.innerHTML = viewConfig(); return; }
+  if (!session) { app.innerHTML = viewLogin(); return; }
+  const h = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+  let html;
+  if (h[0] === 'lote' && h[1]) html = viewLote(h[1], h[2] || 'carga');
+  else if (h[0] === 'nuevo') html = viewNuevo();
+  else if (h[0] === 'reporte' && h[1]) html = viewReporte(h[1]);
+  else html = viewHome();
+  app.innerHTML = html;
+  if (render.after) { const f = render.after; render.after = null; f(); }
+}
+window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
+
+/* ---------- configuración del servidor ---------- */
+function viewConfig() {
+  return `<h1>Configurar servidor</h1>
+  <div class="card"><form data-form="config">
+    <label class="f">URL de la app web de Apps Script <span class="h">(termina en /exec)</span>
+    <input class="in" name="url" type="url" required placeholder="https://script.google.com/macros/s/…/exec" value="${esc(api)}"></label>
+    <div class="btns"><button class="btn primary">Guardar y probar</button></div>
+  </form></div>`;
+}
+FORMS.config = async d => {
+  const url = d.url;
+  if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(url)) { toast('La URL debe ser de script.google.com y terminar en /exec'); return; }
+  api = url;
+  try { const r = await call({ action: 'ping' }, 20000); if (!r.ok) throw new Error(r.error); LS.set('api', api); toast('Conexión correcta'); render(); }
+  catch (e) { api = LS.get('api', '') || DEFAULT_API; toast('No se pudo conectar: ' + (e.message || e)); }
+};
+
+/* ---------- ingreso ---------- */
+let loginSel = '';
+function viewLogin() {
+  if (!users.length && navigator.onLine && !viewLogin.loading) {
+    viewLogin.loading = true;
+    call({ action: 'users' }, 30000).then(r => { if (r.ok) { users = r.users; LS.set('users', users); } }).catch(() => {}).finally(() => { viewLogin.loading = false; render(); });
+  }
+  const list = users.length ? `<div class="users">${users.map(u => `<button type="button" class="${same(u.nombre, loginSel) ? 'on' : ''}" data-act="pickUser" data-n="${esc(u.nombre)}">${esc(u.nombre)}<br><span class="small muted">${esc(u.rol)}</span></button>`).join('')}</div>`
+    : `<p class="muted">${viewLogin.loading ? 'Cargando usuarios…' : 'Sin conexión: no hay usuarios guardados en este equipo. El primer ingreso necesita internet.'}</p>`;
+  return `<h1>Ingresar</h1>
+  <div class="card">${list}
+  ${loginSel ? `<form data-form="login"><label class="f">PIN de ${esc(loginSel)}
+    <input class="in" name="pin" type="password" inputmode="numeric" autocomplete="off" required autofocus></label>
+    <div class="btns"><button class="btn primary">Ingresar</button></div></form>` : ''}
+  </div>
+  <p class="small muted">¿Otro servidor? <a href="#" data-act="resetApi">Configurar URL</a></p>`;
+}
+ACTIONS.pickUser = d => { loginSel = d.n; render(); const i = $('input[name=pin]'); if (i) i.focus(); };
+ACTIONS.resetApi = () => { if (queue.length) { toast('Hay datos sin enviar: sincronizá antes de cambiar el servidor'); return; } api = ''; LS.set('api', ''); render(); };
+FORMS.login = async d => {
+  const nombre = loginSel, pin = d.pin;
+  const btn = $('form[data-form=login] button'); if (btn) btn.disabled = true;
+  const offlineOk = () => {
+    if (creds[nombre] && creds[nombre] === pin) {
+      const u = users.find(u => same(u.nombre, nombre)) || { rol: 'Operario' };
+      session = { nombre, rol: u.rol, nivel: NIVEL[u.rol] || 1 }; LS.set('session', session);
+      toast('Ingreso sin conexión'); loginSel = ''; render(); return true;
+    }
+    return false;
+  };
+  try {
+    const r = await call({ action: 'snapshot', user: nombre, pin }, 45000);
+    if (!r.ok) {
+      if (AUTH_ERR.test(r.error || '')) { toast(r.error); if (btn) btn.disabled = false; return; }
+      throw new Error(r.error);
+    }
+    creds[nombre] = pin; LS.set('creds', creds);
+    session = { nombre: r.user.nombre, rol: r.user.rol, nivel: r.user.nivel }; LS.set('session', session);
+    snapshot = r.data; lastSync = nowIso(); LS.set('snapshot', snapshot); LS.set('lastSync', lastSync);
+    loginSel = ''; render();
+  } catch (e) {
+    if (!offlineOk()) { toast('Sin conexión y sin ingreso previo en este equipo'); if (btn) btn.disabled = false; }
+  }
+};
+
+/* ---------- inicio ---------- */
+function viewHome() {
+  const activos = S.Lotes.filter(l => l.etapa !== 'Cerrado').sort((a, b) => String(b.fecha_hora_inicio).localeCompare(String(a.fecha_hora_inicio)));
+  const cerrados = S.Lotes.filter(l => l.etapa === 'Cerrado').sort((a, b) => String(b.fecha_hora_inicio).localeCompare(String(a.fecha_hora_inicio))).slice(0, 15);
+  const hoyFin = new Date(); hoyFin.setHours(23, 59, 59, 999);
+  const tareas = [];
+  activos.forEach(l => pasosOf(l.id_lote).forEach(p => {
+    const d = toDate(p.fecha_prevista);
+    if (!truthy(p.realizado) && d && d <= hoyFin) tareas.push({ l, p, d });
+  }));
+  tareas.sort((a, b) => a.d - b.d);
+
+  let html = '';
+  if (!snapshot) html += `<div class="note info">Todavía no hay datos descargados. Tocá el indicador de arriba para sincronizar.</div>`;
+  if (failed.length) html += `<div class="note bad"><b>${failed.length} registro(s) rechazado(s) por el servidor.</b> <a href="#" data-act="showFailed">Ver detalle</a></div>`;
+
+  html += `<h2>Tareas para hoy</h2>`;
+  html += tareas.length ? `<div class="card list">${tareas.map(({ l, p, d }) => `
+    <a class="li row" href="#/lote/${encodeURIComponent(l.id_lote)}/proceso" style="text-decoration:none;color:inherit">
+      <div class="grow"><div class="b">${esc(pasoDef(p.id_paso).descripcion || p.id_paso)}</div>
+      <div class="small muted">${esc(l.id_lote)} · previsto ${fdt(p.fecha_prevista)}</div></div>
+      <span class="chip ${pasoState(p) === 'vencido' ? 'bad' : 'warn'}">${pasoState(p) === 'vencido' ? 'Vencida' : 'Hoy'}</span></a>`).join('')}</div>`
+    : `<p class="muted">No hay tareas pendientes para hoy.</p>`;
+
+  html += `<h2>Lotes en curso</h2>`;
+  html += activos.length ? activos.map(cardLote).join('') : `<p class="muted">No hay lotes en curso.</p>`;
+  if (cerrados.length) html += `<h2>Lotes cerrados recientes</h2>` + cerrados.map(cardLote).join('');
+  if (nivel() >= 2) html += `<a class="btn primary fab" href="#/nuevo">＋ Nuevo lote</a>`;
+  return html;
+}
+function cardLote(l) {
+  const its = itemsOf(l.id_lote); const st = its.map(itemStatus);
+  const okN = st.filter(s => s.st === 'ok').length;
+  const venc = pasosOf(l.id_lote).filter(p => pasoState(p) === 'vencido').length;
+  const d = dayOf(l);
+  return `<a class="card" href="#/lote/${encodeURIComponent(l.id_lote)}">
+    <div class="row"><div class="grow"><div class="b">${esc(l.id_lote)}${pendMark(l)}</div>
+    <div class="small muted">${esc(recetaLabel(receta(l.id_receta)))}</div></div>${chipEtapa(l.etapa)} ${chipEstado(l.estado_final)}</div>
+    <div class="small muted" style="margin-top:6px">${l.etapa !== 'Cerrado' && d ? 'Día ' + d + ' · ' : ''}${fmt(l.litros_brutos, 1)} L brutos · inicio ${fd(l.fecha_hora_inicio)}${truthy(l.ensayo_escalado) ? ' · <b>ensayo de escalado</b>' : ''}</div>
+    ${its.length ? `<div class="bar ${okN === its.length ? 'ok' : ''}"><i style="width:${Math.round(100 * okN / its.length)}%"></i></div>
+    <div class="small muted" style="margin-top:4px">Insumos ${okN}/${its.length}${venc ? ` · <span style="color:var(--bad)">${venc} tarea(s) vencida(s)</span>` : ''}</div>` : ''}
+  </a>`;
+}
+ACTIONS.showFailed = () => openModal(`<h2 style="margin-top:0">Registros rechazados</h2>
+  <p class="small muted">El servidor no aceptó estos datos. Podés reintentar (por ejemplo, después de corregir un PIN o un permiso) o descartarlos.</p>
+  ${failed.map((o, i) => `<div class="card"><div class="b">${esc(o.type === 'insert' ? 'Alta' : 'Cambio')} en ${esc(o.table)}</div>
+    <div class="small muted">${esc(o.by)} · ${fdt(o.at)}</div><div class="note bad">${esc(o.error)}</div>
+    <div class="small" style="word-break:break-all">${esc(JSON.stringify(o.row || o.fields))}</div></div>`).join('')}
+  <div class="btns"><button class="btn" data-act="close">Cerrar</button><button class="btn" data-act="retryFailed">Reintentar</button><button class="btn danger" data-act="dropFailed">Descartar</button></div>`);
+ACTIONS.retryFailed = () => { queue = queue.concat(failed.map(({ error, ...o }) => Object.assign(o, { by: creds[o.by] ? o.by : session.nombre }))); failed = []; LS.set('queue', queue); LS.set('failed', failed); closeModal(); sync({ manual: true }); };
+ACTIONS.dropFailed = () => { if (!confirm('¿Descartar definitivamente estos registros?')) return; failed = []; LS.set('failed', failed); closeModal(); render(); };
+
+/* ---------- nuevo lote ---------- */
+function viewNuevo() {
+  if (nivel() < 2) return `<div class="note warn">Solo un Supervisor o superior puede crear lotes.</div>`;
+  const recetas = S.Recetas.filter(r => r.estado === 'Vigente');
+  if (!recetas.length) return `<div class="note warn">No hay recetas vigentes descargadas. Sincronizá primero.</div>`;
+  const hoy = new Date(); const z = n => String(n).padStart(2, '0');
+  render.after = () => LIVE.nuevo();
+  return `<h1>Nuevo lote</h1>
+  <form class="card" data-form="nuevo" id="fNuevo">
+    <label class="f">Receta<select class="in" name="receta" data-live="nuevo" required>
+      ${recetas.map(r => `<option value="${esc(r.id_receta)}">${esc(recetaLabel(r))}</option>`).join('')}</select></label>
+    <label class="f">Litros netos a embotellar<input class="in" name="netos" inputmode="decimal" required data-live="nuevo" placeholder="78"></label>
+    <div id="nuevoCalc"></div>
+    <label class="f">N° de lote<input class="in" name="id" required value="${esc(nuevoId(recetas[0]))}" oninput="this.dataset.auto='0'"></label>
+    <label class="f">Inicio<input class="in" name="inicio" type="datetime-local" required value="${toLocalInput(hoy)}"></label>
+    <label class="f">Notas <span class="h">(opcional)</span><textarea class="in" name="notas"></textarea></label>
+    <div class="btns"><a class="btn" href="#/">Cancelar</a><button class="btn primary">Crear lote</button></div>
+  </form>`;
+}
+// N° de lote sugerido: prefijo del producto (columna Prefijo_lote en Productos) + AAMMDD
+function nuevoId(r) {
+  const p = find('Productos', 'id_producto', r && r.id_producto) || {};
+  const pre = String(p.prefijo_lote || 'LT').trim().toUpperCase();
+  const d = new Date(); const z = n => String(n).padStart(2, '0');
+  let id = `${pre}-${String(d.getFullYear()).slice(2)}${z(d.getMonth() + 1)}${z(d.getDate())}`;
+  if (lote(id)) { let k = 2; while (lote(id + '-' + k)) k++; id += '-' + k; }
+  return id;
+}
+LIVE.nuevo = el => {
+  const f = $('#fNuevo'); if (!f) return;
+  const r = receta(f.receta.value); const netos = num(f.netos.value);
+  if (el && el.name === 'receta' && f.id.dataset.auto !== '0') f.id.value = nuevoId(r);
+  const rend = num(r.rendimiento_esperado); const max = num(r.vol_bruto_max_validado_l);
+  const box = $('#nuevoCalc');
+  if (isNaN(netos) || netos <= 0 || !rend) { box.innerHTML = `<p class="small muted">Rendimiento esperado ${pct(rend, 0)} · escala validada hasta ${fmt(max, 0)} L brutos.</p>`; return; }
+  const brutos = netos / rend;
+  const items = S.Receta_Items.filter(i => same(i.id_receta, r.id_receta)).sort((a, b) => num(a.orden_carga) - num(b.orden_carga));
+  const ensayo = !isNaN(max) && brutos > max + 1e-9;
+  box.innerHTML = `
+    <div class="note info"><b>${fmt(brutos, 2)} L brutos</b> a elaborar (${fmt(netos, 2)} L ÷ ${pct(rend, 0)} de rendimiento)</div>
+    ${ensayo ? `<div class="note ${nivel() >= 3 ? 'warn' : 'bad'}"><b>Ensayo de escalado:</b> supera los ${fmt(max, 0)} L validados para esta receta. ${nivel() >= 3 ? 'Al crearlo quedás registrado como quien lo autoriza.' : 'Solo un Aprobador puede crearlo.'}</div>` : ''}
+    <div class="scroll"><table class="t"><tr><th>Insumo</th><th>Uso</th><th class="n">Cantidad</th></tr>
+    ${items.map(i => { const ins = insumo(i.id_insumo); return `<tr><td>${esc(ins.nombre)}</td><td class="muted">${esc(i.uso)}</td><td class="n b">${fmt(num(i.cant_por_l_bruto) * brutos, 3)} ${esc(ins.unidad)}</td></tr>`; }).join('')}
+    </table></div>`;
+};
+FORMS.nuevo = d => {
+  const r = receta(d.receta); const netos = num(d.netos);
+  if (!r || isNaN(netos) || netos <= 0) { toast('Revisá receta y litros'); return; }
+  const id = d.id.replace(/\s+/g, '');
+  if (lote(id)) { toast('Ya existe un lote ' + id); return; }
+  const rend = num(r.rendimiento_esperado); const brutos = Math.round(netos / rend * 100) / 100;
+  const max = num(r.vol_bruto_max_validado_l); const ensayo = !isNaN(max) && brutos > max + 1e-9;
+  if (ensayo && nivel() < 3) { toast('Un ensayo de escalado requiere un Aprobador'); return; }
+  const inicio = fromLocalInput(d.inicio);
+  const ops = [{ type: 'insert', table: 'Lotes', row: {
+    id_lote: id, id_receta: r.id_receta, id_planta: (find('Productos', 'id_producto', r.id_producto) || {}).id_planta || '',
+    fecha_hora_inicio: inicio, litros_netos_objetivo: netos, litros_brutos: brutos, ensayo_escalado: ensayo,
+    autorizado_por: ensayo ? session.nombre : '', etapa: 'Carga', responsable: session.nombre, notas: d.notas || '' } }];
+  S.Receta_Items.filter(i => same(i.id_receta, r.id_receta)).sort((a, b) => num(a.orden_carga) - num(b.orden_carga)).forEach((i, k) => {
+    ops.push({ type: 'insert', table: 'Lote_Items', row: { id_lote_item: `${id}-${String(k + 1).padStart(2, '0')}`, id_lote: id, id_item: i.id_item,
+      id_insumo: i.id_insumo, uso: i.uso, cant_teorica: Math.round(num(i.cant_por_l_bruto) * brutos * 1000) / 1000, orden_carga: i.orden_carga } });
+  });
+  S.Pasos.filter(p => same(p.id_receta, r.id_receta)).sort((a, b) => num(a.orden) - num(b.orden)).forEach((p, k) => {
+    const prev = new Date(new Date(inicio).getTime() + (num(p.horas_desde_inicio) || 0) * 3600e3).toISOString();
+    ops.push({ type: 'insert', table: 'Pasos_Lote', row: { id_paso_lote: `${id}-P${String(k + 1).padStart(2, '0')}`, id_lote: id, id_paso: p.id_paso,
+      fecha_prevista: prev, realizado: false, fecha_hora_real: '', operario: '', notas: '' } });
+  });
+  enqueue(ops);
+  location.hash = '#/lote/' + encodeURIComponent(id);
+  toast('Lote creado');
+};
+
+/* ---------- detalle del lote ---------- */
+function viewLote(id, tab) {
+  const l = lote(id);
+  if (!l) return `<div class="note warn">No se encontró el lote ${esc(id)}.</div><a class="btn" href="#/">Volver</a>`;
+  const r = receta(l.id_receta); const d = dayOf(l);
+  const idx = ETAPAS.indexOf(l.etapa); const next = idx >= 0 && idx < ETAPAS.length - 2 ? ETAPAS[idx + 1] : null;
+  const tabs = [['carga', 'Carga'], ['proceso', 'Proceso'], ['bitacora', 'Bitácora'], ['controles', 'Controles'], ['cierre', 'Cierre']];
+  const body = { carga: tabCarga, proceso: tabProceso, bitacora: tabBitacora, controles: tabControles, cierre: tabCierre }[tab] || tabCarga;
+  return `<div class="row"><div class="grow"><h1 style="margin-bottom:2px">${esc(l.id_lote)}${pendMark(l)}</h1>
+    <div class="muted small">${esc(recetaLabel(r))}</div></div>${chipEtapa(l.etapa)}</div>
+  <p class="small muted">${l.etapa !== 'Cerrado' && d ? '<b>Día ' + d + '</b> · ' : ''}Inicio ${fdt(l.fecha_hora_inicio)} · ${fmt(l.litros_brutos, 2)} L brutos · objetivo ${fmt(l.litros_netos_objetivo, 1)} L netos${truthy(l.ensayo_escalado) ? ` · <b>ensayo de escalado</b> (autorizó ${esc(l.autorizado_por || '—')})` : ''}</p>
+  ${next && nivel() >= 2 ? `<button class="btn block noprint" data-act="advance" data-id="${esc(id)}" data-to="${esc(next)}" style="margin-bottom:12px">Pasar a etapa: ${esc(next)} →</button>` : ''}
+  <nav class="tabs">${tabs.map(([k, t]) => `<a href="#/lote/${encodeURIComponent(id)}/${k}" class="${k === tab ? 'on' : ''}">${t}</a>`).join('')}
+    <a href="#/reporte/${encodeURIComponent(id)}">Reporte</a></nav>
+  ${body(l)}`;
+}
+ACTIONS.advance = d => {
+  const l = lote(d.id);
+  if (l.etapa === 'Carga') {
+    const inc = itemsOf(l.id_lote).map(itemStatus).filter(s => s.st !== 'ok').length;
+    if (inc && !confirm(`Hay ${inc} insumo(s) sin completar o fuera de tolerancia. ¿Pasar igual a ${d.to}?`)) return;
+  }
+  enqueue([{ type: 'update', table: 'Lotes', key: d.id, fields: { etapa: d.to } }]);
+  toast('Etapa: ' + d.to);
+};
+
+/* ----- carga de insumos ----- */
+function tabCarga(l) {
+  const its = itemsOf(l.id_lote);
+  if (!its.length) return `<p class="muted">Este lote no tiene insumos.</p>`;
+  const canLoad = l.etapa !== 'Cerrado';
+  return its.map(it => {
+    const s = itemStatus(it); const ins = insumo(it.id_insumo); const u = esc(ins.unidad);
+    const chip = { ok: '<span class="chip ok">Completo</span>', pendiente: '<span class="chip">Pendiente</span>', parcial: '<span class="chip warn">Parcial</span>', exceso: '<span class="chip bad">Excedido</span>' }[s.st];
+    const w = s.teo ? Math.min(100, Math.round(100 * s.cargado / s.teo)) : 0;
+    const cs = cargasOf(it.id_lote_item);
+    return `<div class="card item" ${canLoad ? `data-act="carga" data-item="${esc(it.id_lote_item)}"` : ''}>
+      <div class="row"><div class="grow"><div class="b">${esc(ins.nombre)}</div>
+      <div class="small muted">${esc(it.uso)}${s.ri && s.ri.forma_de_carga ? ' · ' + esc(s.ri.forma_de_carga) : ''} · tolerancia ±${pct(s.tol, 1)}</div></div>${chip}</div>
+      <div class="q"><div><span>Teórico</span><b>${fmt(s.teo)}</b> ${u}</div><div><span>Cargado</span><b>${fmt(s.cargado)}</b> ${u}</div>
+      <div><span>${s.pend >= 0 ? 'Falta' : 'Exceso'}</span><b>${fmt(Math.abs(s.pend))}</b> ${u}</div></div>
+      <div class="bar ${s.st === 'ok' ? 'ok' : s.st === 'exceso' ? 'bad' : ''}"><i style="width:${w}%"></i></div>
+      ${cs.length ? `<div class="small muted" style="margin-top:8px">${cs.length} carga(s) · última ${ft(cs[cs.length - 1].fecha_hora)} (${fmt(cs[cs.length - 1].cantidad)} ${u})${cs.some(c => c._pending) ? ' <span class="pend">⟳ sin enviar</span>' : ''}</div>` : ''}
+    </div>`;
+  }).join('') + (canLoad ? `<p class="small muted">Tocá un insumo para registrar una carga. La hora se registra sola.</p>` : '');
+}
+function lotesInsumoOpts(idInsumo, sel) {
+  const ls = S.Lotes_Insumo.filter(x => same(x.id_insumo, idInsumo)).sort((a, b) => String(b.fecha_recepcion).localeCompare(String(a.fecha_recepcion)));
+  return ls.map(x => { const p = find('Proveedores', 'id_proveedor', x.id_proveedor);
+    return `<option value="${esc(x.id_lote_insumo)}" ${same(x.id_lote_insumo, sel) ? 'selected' : ''}>${esc(x.lote_proveedor)}${p ? ' · ' + esc(p.nombre) : ''}${x.fecha_recepcion ? ' · ' + fd(x.fecha_recepcion) : ''}</option>`; }).join('');
+}
+ACTIONS.carga = d => openCarga(d.item);
+function openCarga(itemId, keep = {}) {
+  const it = find('Lote_Items', 'id_lote_item', itemId); const s = itemStatus(it); const ins = insumo(it.id_insumo);
+  const cs = cargasOf(itemId);
+  const lastLot = keep.lote || (cs.length ? cs[cs.length - 1].id_lote_insumo : '');
+  const opts = lotesInsumoOpts(it.id_insumo, lastLot);
+  openModal(`<h2 style="margin-top:0">${esc(ins.nombre)}</h2>
+    <p class="small muted">Teórico ${fmt(s.teo)} ${esc(ins.unidad)} · cargado ${fmt(s.cargado)} · falta ${fmt(Math.max(0, s.pend))} ${esc(ins.unidad)}</p>
+    <form data-form="carga" id="fCarga" data-item="${esc(itemId)}">
+      <label class="f">Cantidad cargada (${esc(ins.unidad)})<input class="in" name="cantidad" inputmode="decimal" required autofocus value="${esc(keep.cantidad || '')}" placeholder="${s.pend > 0 ? fmt(s.pend) : ''}" data-live="carga"></label>
+      <div id="cargaWarn"></div>
+      <label class="f">Lote del insumo
+        <select class="in" name="lote" data-live="loteSel">${opts}<option value="__nuevo" ${!opts ? 'selected' : ''}>＋ Registrar lote nuevo…</option></select></label>
+      <div id="nuevoLoteBox" ${opts ? 'hidden' : ''}>
+        <div class="grid2"><label class="f">Lote del proveedor<input class="in" name="lote_prov" placeholder="Ej. ALC-7781"></label>
+        <label class="f">Proveedor<select class="in" name="proveedor"><option value="">—</option>${S.Proveedores.map(p => `<option value="${esc(p.id_proveedor)}">${esc(p.nombre)}</option>`).join('')}</select></label></div>
+      </div>
+      <label class="f">Observación <span class="h" id="obsReq">(opcional)</span><textarea class="in" name="obs"></textarea></label>
+      <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button>
+        <button class="btn" name="again" value="1">Guardar y otra</button><button class="btn primary">Guardar</button></div>
+    </form>
+    ${cs.length ? `<h2>Cargas registradas</h2><div class="list">${cs.slice().reverse().map(c => { const li = find('Lotes_Insumo', 'id_lote_insumo', c.id_lote_insumo);
+      return `<div class="li small"><b>${fmt(c.cantidad)} ${esc(ins.unidad)}</b> · ${fdt(c.fecha_hora)} · ${esc(c.operario || '')}${li ? ' · lote ' + esc(li.lote_proveedor) : ''}${c.observacion ? '<br><span class="muted">' + esc(c.observacion) + '</span>' : ''}${pendMark(c)}</div>`; }).join('')}</div>` : ''}`);
+  const f = $('#fCarga');
+  f.addEventListener('click', e => { if (e.target.name === 'again') f.dataset.again = '1'; else if (e.target.tagName === 'BUTTON') f.dataset.again = ''; });
+}
+LIVE.loteSel = el => { $('#nuevoLoteBox').hidden = el.value !== '__nuevo'; };
+LIVE.carga = el => {
+  const f = $('#fCarga'); const it = find('Lote_Items', 'id_lote_item', f.dataset.item); const s = itemStatus(it);
+  const q = num(el.value); const box = $('#cargaWarn');
+  if (isNaN(q)) { box.innerHTML = ''; return; }
+  const tot = s.cargado + q; const dev = s.teo ? (tot - s.teo) / s.teo : 0;
+  const exc = dev > s.tol;
+  $('#obsReq').textContent = exc ? '(obligatoria: supera la tolerancia)' : '(opcional)';
+  box.innerHTML = exc ? `<div class="note bad">Con esta carga el total queda en ${fmt(tot)}: <b>${pct(dev)}</b> sobre el teórico.</div>`
+    : (Math.abs(dev) <= s.tol ? `<div class="note ok">Con esta carga el insumo queda completo (${pct(dev)}).</div>` : '');
+};
+FORMS.carga = (d, f) => {
+  const it = find('Lote_Items', 'id_lote_item', f.dataset.item); const s = itemStatus(it);
+  const q = num(d.cantidad);
+  if (isNaN(q) || q <= 0) { toast('Ingresá una cantidad válida'); return; }
+  const dev = s.teo ? (s.cargado + q - s.teo) / s.teo : 0;
+  if (dev > s.tol && !d.obs) { toast('La observación es obligatoria cuando se supera la tolerancia'); return; }
+  const ops = []; let loteIns = d.lote;
+  if (loteIns === '__nuevo' || !loteIns) {
+    if (!d.lote_prov) { toast('Indicá el lote del proveedor'); return; }
+    loteIns = uid('LI');
+    ops.push({ type: 'insert', table: 'Lotes_Insumo', row: { id_lote_insumo: loteIns, id_insumo: it.id_insumo, id_proveedor: d.proveedor || '',
+      lote_proveedor: d.lote_prov, fecha_recepcion: '', cantidad_recibida: '', vencimiento: '', notas: 'Registrado desde planta por ' + session.nombre } });
+  }
+  ops.push({ type: 'insert', table: 'Cargas', row: { id_carga: uid('CAR'), id_lote_item: it.id_lote_item, cantidad: q, id_lote_insumo: loteIns,
+    fecha_hora: nowIso(), operario: session.nombre, hora_sync: '', observacion: d.obs || '' } });
+  const again = f.dataset.again === '1';
+  enqueue(ops);
+  if (again) { openCarga(it.id_lote_item, { lote: loteIns, cantidad: d.cantidad }); toast('Carga guardada'); }
+  else { closeModal(); toast('Carga guardada'); }
+};
+
+/* ----- proceso (pasos) ----- */
+function tabProceso(l) {
+  const ps = pasosOf(l.id_lote);
+  if (!ps.length) return `<p class="muted">Este lote no tiene pasos de proceso.</p>`;
+  return `<div class="card list">${ps.map(p => { const def = pasoDef(p.id_paso); const st = pasoState(p);
+    return `<div class="li row"><div class="grow"><div class="b">${esc(def.descripcion || p.id_paso)}${pendMark(p)}</div>
+      <div class="small muted">${esc(def.etapa || '')} · previsto ${fdt(p.fecha_prevista)}${st === 'hecho' ? ` · <span style="color:var(--ok)">hecho ${fdt(p.fecha_hora_real)}${p.operario ? ' · ' + esc(p.operario) : ''}</span>` : ''}</div>
+      ${p.notas ? `<div class="small">${esc(p.notas)}</div>` : ''}</div>
+      ${st === 'hecho' ? '<span class="chip ok">✓</span>' : l.etapa === 'Cerrado' ? '' : `<button class="btn ${st === 'vencido' ? 'danger' : ''}" data-act="paso" data-id="${esc(p.id_paso_lote)}">${st === 'vencido' ? 'Vencida · Hecho' : 'Hecho'}</button>`}</div>`; }).join('')}</div>`;
+}
+ACTIONS.paso = d => {
+  const p = find('Pasos_Lote', 'id_paso_lote', d.id); const def = pasoDef(p.id_paso);
+  openModal(`<h2 style="margin-top:0">${esc(def.descripcion || '')}</h2>
+    <form data-form="paso" data-id="${esc(d.id)}">
+      <label class="f">Realizado el<input class="in" type="datetime-local" name="cuando" value="${toLocalInput(new Date())}" required></label>
+      <label class="f">Notas <span class="h">(opcional)</span><textarea class="in" name="notas"></textarea></label>
+      <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary">Marcar como hecho</button></div></form>`);
+};
+FORMS.paso = (d, f) => {
+  enqueue([{ type: 'update', table: 'Pasos_Lote', key: f.dataset.id, fields: { realizado: true, fecha_hora_real: fromLocalInput(d.cuando), notas: d.notas || '', operario: session.nombre } }]);
+  closeModal(); toast('Paso registrado');
+};
+
+/* ----- bitácora ----- */
+const TIPOS_EVENTO = ['Revuelto', 'Rotación', 'Escurrido', 'Filtrado', 'Observación', 'Otro'];
+function tabBitacora(l) {
+  const ev = S.Eventos.filter(e => same(e.id_lote, l.id_lote)).sort((a, b) => String(b.fecha_hora).localeCompare(String(a.fecha_hora)));
+  return `${l.etapa !== 'Cerrado' ? `<button class="btn primary block" data-act="evento" data-id="${esc(l.id_lote)}" style="margin-bottom:12px">＋ Registrar evento</button>` : ''}
+  ${ev.length ? `<div class="card list">${ev.map(e => `<div class="li"><div class="row"><span class="chip info">${esc(e.tipo)}</span><span class="small muted grow">${fdt(e.fecha_hora)} · ${esc(e.operario || '')}</span>${pendMark(e)}</div>
+    ${e.tipo_filtro || e.litros ? `<div class="small" style="margin-top:4px">${e.tipo_filtro ? 'Filtro: <b>' + esc(e.tipo_filtro) + '</b>' : ''}${e.litros ? ' · ' + fmt(e.litros, 1) + ' L' : ''}</div>` : ''}
+    ${e.notas ? `<div style="margin-top:4px">${esc(e.notas)}</div>` : ''}</div>`).join('')}</div>` : `<p class="muted">Sin eventos registrados.</p>`}`;
+}
+ACTIONS.evento = d => openModal(`<h2 style="margin-top:0">Registrar evento</h2>
+  <form data-form="evento" data-id="${esc(d.id)}" id="fEvento">
+    <label class="f">Tipo<select class="in" name="tipo" data-live="tipoEv">${TIPOS_EVENTO.map(t => `<option>${t}</option>`).join('')}</select></label>
+    <div id="filtroBox" hidden><div class="grid2"><label class="f">Tipo de filtro<input class="in" name="tipo_filtro" placeholder="Ej. placa 5 µm"></label>
+      <label class="f">Litros filtrados<input class="in" name="litros" inputmode="decimal"></label></div></div>
+    <label class="f">Fecha y hora<input class="in" type="datetime-local" name="cuando" value="${toLocalInput(new Date())}" required></label>
+    <label class="f">Notas<textarea class="in" name="notas" placeholder="Color, aroma, estado de las bolsas…"></textarea></label>
+    <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary">Guardar</button></div></form>`);
+LIVE.tipoEv = el => { $('#filtroBox').hidden = el.value !== 'Filtrado'; };
+FORMS.evento = (d, f) => {
+  if (!d.notas && d.tipo !== 'Filtrado') { toast('Agregá una nota'); return; }
+  enqueue([{ type: 'insert', table: 'Eventos', row: { id_evento: uid('EV'), id_lote: f.dataset.id, tipo: d.tipo, fecha_hora: fromLocalInput(d.cuando),
+    operario: session.nombre, tipo_filtro: d.tipo === 'Filtrado' ? (d.tipo_filtro || '') : '', litros: d.tipo === 'Filtrado' && !isNaN(num(d.litros)) ? num(d.litros) : '', notas: d.notas || '' } }]);
+  closeModal(); toast('Evento guardado');
+};
+
+/* ----- controles ----- */
+const COMPARA = ['Igual', 'Levemente distinto', 'Distinto'];
+function tabControles(l) {
+  const cs = S.Controles.filter(c => same(c.id_lote, l.id_lote)).sort((a, b) => String(b.fecha_hora).localeCompare(String(a.fecha_hora)));
+  const labs = S.Analisis_Lab.filter(a => same(a.id_lote, l.id_lote));
+  const delta = c => {
+    if (!c.id_lote_referencia) return '';
+    const ref = lastFinalControl(c.id_lote_referencia); if (!ref) return `<div class="small muted">Referencia ${esc(c.id_lote_referencia)} sin control final.</div>`;
+    const dd = num(c.densidad_g_ml) - num(ref.densidad_g_ml), db = num(c.brix) - num(ref.brix);
+    const dt = num(c.temperatura_c) - num(ref.temperatura_c);
+    return `<div class="small" style="margin-top:4px">vs ${esc(c.id_lote_referencia)}: Δ densidad <b>${sgn(dd, 4)}</b> · Δ Brix <b>${sgn(db, 1)}</b>${!isNaN(dt) && Math.abs(dt) > 1 ? ` <span class="chip warn">temperaturas distintas (${fmt(c.temperatura_c, 1)} vs ${fmt(ref.temperatura_c, 1)} °C)</span>` : ''}</div>`;
+  };
+  return `${l.etapa !== 'Cerrado' || nivel() >= 3 ? `<button class="btn primary block" data-act="control" data-id="${esc(l.id_lote)}" style="margin-bottom:12px">＋ Registrar control</button>` : ''}
+  ${cs.length ? cs.map(c => `<div class="card"><div class="row"><span class="chip info">${esc(c.momento)}</span><span class="small muted grow">${fdt(c.fecha_hora)} · ${esc(c.operario || '')}</span>${pendMark(c)}</div>
+    <div class="item" style="cursor:default"><div class="q"><div><span>Densidad</span><b>${fdens(c.densidad_g_ml)}</b></div>
+    <div><span>Brix</span><b>${fmt(c.brix, 1)}</b></div><div><span>Temp.</span><b>${fmt(c.temperatura_c, 1)}</b> °C</div></div></div>
+    ${delta(c)}${c.color_vs_ref || c.sabor_vs_ref ? `<div class="small" style="margin-top:4px">Color: ${esc(c.color_vs_ref || '—')} · Sabor: ${esc(c.sabor_vs_ref || '—')}</div>` : ''}
+    ${c.notas ? `<div class="small muted" style="margin-top:4px">${esc(c.notas)}</div>` : ''}</div>`).join('') : `<p class="muted">Sin controles registrados.</p>`}
+  ${labs.length ? `<h2>Análisis de laboratorio</h2><div class="card scroll"><table class="t"><tr><th>Parámetro</th><th class="n">Valor</th><th>Método</th><th>Lab.</th></tr>
+    ${labs.map(a => `<tr><td>${esc(a.parametro)}</td><td class="n b">${esc(a.valor)} ${esc(a.unidad)}</td><td class="small">${esc(a.metodo)}</td><td class="small">${esc(a.laboratorio)} ${esc(a.protocolo)}</td></tr>`).join('')}</table></div>` : ''}`;
+}
+ACTIONS.control = d => {
+  const refs = S.Lotes.filter(x => !same(x.id_lote, d.id) && lastFinalControl(x.id_lote));
+  openModal(`<h2 style="margin-top:0">Registrar control</h2>
+  <form data-form="control" data-id="${esc(d.id)}">
+    <label class="f">Momento<select class="in" name="momento">${['Día 0', 'Intermedio', 'Escurrido', 'Final'].map(m => `<option>${m}</option>`).join('')}</select></label>
+    <div class="grid2"><label class="f">Temperatura muestra (°C)<input class="in" name="temp" inputmode="decimal" required></label>
+    <label class="f">Densidad (g/mL)<input class="in" name="dens" inputmode="decimal" placeholder="1,085"></label></div>
+    <label class="f">Brix<input class="in" name="brix" inputmode="decimal"></label>
+    <label class="f">Lote de referencia<select class="in" name="ref"><option value="">—</option>${refs.map(x => `<option value="${esc(x.id_lote)}">${esc(x.id_lote)}${x.estado_final ? ' · ' + esc(x.estado_final) : ''}</option>`).join('')}</select></label>
+    <div class="grid2"><label class="f">Color vs referencia<select class="in" name="color"><option value="">—</option>${COMPARA.map(c => `<option>${c}</option>`).join('')}</select></label>
+    <label class="f">Sabor vs referencia<select class="in" name="sabor"><option value="">—</option>${COMPARA.map(c => `<option>${c}</option>`).join('')}</select></label></div>
+    <label class="f">Notas<textarea class="in" name="notas"></textarea></label>
+    <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary">Guardar</button></div></form>`);
+};
+FORMS.control = (d, f) => {
+  const dens = num(d.dens), brix = num(d.brix), temp = num(d.temp);
+  if (isNaN(temp)) { toast('La temperatura es obligatoria'); return; }
+  if (isNaN(dens) && isNaN(brix) && !d.color && !d.sabor) { toast('Cargá al menos una medición'); return; }
+  if (!isNaN(dens) && (dens < 0.8 || dens > 1.4)) { toast('Revisá la densidad: se espera en g/mL (ej. 1,085)'); return; }
+  enqueue([{ type: 'insert', table: 'Controles', row: { id_control: uid('CT'), id_lote: f.dataset.id, momento: d.momento, fecha_hora: nowIso(), temperatura_c: temp,
+    densidad_g_ml: isNaN(dens) ? '' : dens, brix: isNaN(brix) ? '' : brix, color_vs_ref: d.color || '', sabor_vs_ref: d.sabor || '', id_lote_referencia: d.ref || '',
+    operario: session.nombre, notas: d.notas || '' } }]);
+  closeModal(); toast('Control guardado');
+};
+
+/* ----- cierre ----- */
+function tabCierre(l) {
+  const rd = rendimiento(l); const canSup = nivel() >= 2; const canApr = nivel() >= 3;
+  const alerta = !isNaN(rd.dif) && Math.abs(rd.dif) > UMBRAL_RENDIMIENTO;
+  let html = `<div class="card"><div class="b">Rendimiento</div>
+    <table class="t" style="margin-top:8px"><tr><td>Esperado</td><td class="n">${pct(rd.esp)} · ${fmt(rd.netosEsp, 1)} L</td></tr>
+    <tr><td>Obtenido</td><td class="n b">${isNaN(rd.ob) ? '—' : pct(rd.real) + ' · ' + fmt(rd.ob, 1) + ' L'}</td></tr>
+    <tr><td>Diferencia</td><td class="n b" style="color:${alerta ? 'var(--bad)' : 'inherit'}">${pts(rd.dif)}${isNaN(rd.ob) ? '' : ' · ' + ((rd.ob - rd.netosEsp) >= 0 ? '+' : '') + fmt(rd.ob - rd.netosEsp, 1) + ' L'}</td></tr></table>
+    ${alerta ? `<div class="note bad">El rendimiento se aparta más de ${UMBRAL_RENDIMIENTO * 100} puntos de lo proyectado.</div>` : ''}</div>`;
+  if (canSup && l.etapa !== 'Cerrado') html += `<form class="card" data-form="cierre" data-id="${esc(l.id_lote)}"><div class="b">Resultado y envasado</div>
+      <label class="f">Litros obtenidos<input class="in" name="obtenidos" inputmode="decimal" value="${esc(l.litros_obtenidos)}"></label>
+      <div class="grid2"><label class="f">Botellas<input class="in" name="botellas" inputmode="numeric" value="${esc(l.cant_botellas)}"></label>
+      <label class="f">Formato (ml)<input class="in" name="formato" inputmode="numeric" value="${esc(l.formato_ml)}"></label></div>
+      <label class="f">Lote en etiqueta<input class="in" name="etiqueta" value="${esc(l.lote_etiqueta)}"></label>
+      <label class="f">Notas del lote<textarea class="in" name="notas">${esc(l.notas)}</textarea></label>
+      <div class="btns"><button class="btn primary">Guardar</button></div></form>`;
+  else html += `<div class="card small"><div class="b">Envasado</div>${fmt(l.cant_botellas, 0)} botellas · ${fmt(l.formato_ml, 0)} ml · lote etiqueta ${esc(l.lote_etiqueta || '—')}${l.notas ? `<p class="muted">${esc(l.notas)}</p>` : ''}</div>`;
+  html += `<div class="card"><div class="b">Aprobación</div>`;
+  if (l.estado_final) html += `<p>${chipEstado(l.estado_final)} por ${esc(l.aprobado_por || '—')} · ${fdt(l.fecha_aprobacion)}${pendMark(l)}</p>${l.motivo ? `<p class="small">${esc(l.motivo)}</p>` : ''}`;
+  if (canApr) html += `<form data-form="aprobar" data-id="${esc(l.id_lote)}">
+      <label class="f">Decisión<select class="in" name="estado" required><option value="">—</option>${['Aprobado', 'Reprocesar', 'Descartado'].map(e => `<option ${l.estado_final === e ? 'selected' : ''}>${e}</option>`).join('')}</select></label>
+      <label class="f">Motivo <span class="h">(obligatorio si no se aprueba)</span><textarea class="in" name="motivo">${esc(l.motivo)}</textarea></label>
+      <div class="btns"><button class="btn primary">${l.estado_final ? 'Actualizar decisión' : 'Registrar decisión y cerrar lote'}</button></div></form>`;
+  else if (!l.estado_final) html += `<p class="muted small">La decisión la registra un Aprobador.</p>`;
+  return html + `</div>`;
+}
+FORMS.cierre = (d, f) => {
+  const fields = {};
+  const ob = num(d.obtenidos); if (d.obtenidos && isNaN(ob)) { toast('Litros obtenidos inválidos'); return; }
+  fields.litros_obtenidos = isNaN(ob) ? '' : ob;
+  fields.cant_botellas = isNaN(num(d.botellas)) ? '' : num(d.botellas);
+  fields.formato_ml = isNaN(num(d.formato)) ? '' : num(d.formato);
+  fields.lote_etiqueta = d.etiqueta || ''; fields.notas = d.notas || '';
+  enqueue([{ type: 'update', table: 'Lotes', key: f.dataset.id, fields }]); toast('Guardado');
+};
+FORMS.aprobar = (d, f) => {
+  if (!d.estado) { toast('Elegí una decisión'); return; }
+  if (d.estado !== 'Aprobado' && !d.motivo) { toast('Indicá el motivo'); return; }
+  const l = lote(f.dataset.id);
+  if (d.estado === 'Aprobado' && isNaN(num(l.litros_obtenidos)) && !confirm('Todavía no se cargaron los litros obtenidos. ¿Aprobar igual?')) return;
+  enqueue([{ type: 'update', table: 'Lotes', key: f.dataset.id, fields: { estado_final: d.estado, motivo: d.motivo || '', aprobado_por: session.nombre, fecha_aprobacion: nowIso(), etapa: 'Cerrado' } }]);
+  toast('Decisión registrada');
+};
+
+/* ---------- reporte de trazabilidad ---------- */
+function viewReporte(id) {
+  const l = lote(id); if (!l) return `<div class="note warn">No se encontró el lote.</div>`;
+  const r = receta(l.id_receta); const rd = rendimiento(l);
+  const its = itemsOf(id);
+  const ev = S.Eventos.filter(e => same(e.id_lote, id)).sort((a, b) => String(a.fecha_hora).localeCompare(String(b.fecha_hora)));
+  const cs = S.Controles.filter(c => same(c.id_lote, id)).sort((a, b) => String(a.fecha_hora).localeCompare(String(b.fecha_hora)));
+  const labs = S.Analisis_Lab.filter(a => same(a.id_lote, id));
+  const pend = queue.length ? `<div class="note warn noprint">Hay ${queue.length} registro(s) sin sincronizar: el reporte los incluye, pero todavía no están en la planilla.</div>` : '';
+  return `<div class="report">${pend}
+  <div class="row noprint" style="margin-bottom:10px"><a class="btn" href="#/lote/${encodeURIComponent(id)}">← Volver</a><span class="grow"></span><button class="btn primary" data-act="print">Imprimir / PDF</button></div>
+  <h1>Reporte de trazabilidad · Lote ${esc(id)}</h1>
+  <div class="card"><table class="t">
+    <tr><td>Producto / receta</td><td class="b">${esc(recetaLabel(r))} (${esc(l.id_receta)})</td></tr>
+    <tr><td>Inicio</td><td>${fdt(l.fecha_hora_inicio)} · responsable ${esc(l.responsable || '—')}</td></tr>
+    <tr><td>Volumen</td><td>${fmt(l.litros_brutos, 2)} L brutos · objetivo ${fmt(l.litros_netos_objetivo, 1)} L netos${truthy(l.ensayo_escalado) ? ' · ensayo de escalado autorizado por ' + esc(l.autorizado_por || '—') : ''}</td></tr>
+    <tr><td>Rendimiento</td><td>esperado ${pct(rd.esp)} · obtenido ${isNaN(rd.ob) ? '—' : pct(rd.real) + ' (' + fmt(rd.ob, 1) + ' L)'} · ${pts(rd.dif)}</td></tr>
+    <tr><td>Envasado</td><td>${fmt(l.cant_botellas, 0)} botellas de ${fmt(l.formato_ml, 0)} ml · lote etiqueta ${esc(l.lote_etiqueta || '—')}</td></tr>
+    <tr><td>Estado</td><td>${esc(l.etapa)}${l.estado_final ? ' · ' + esc(l.estado_final) + ' por ' + esc(l.aprobado_por || '—') + ' el ' + fdt(l.fecha_aprobacion) : ''}${l.motivo ? ' · ' + esc(l.motivo) : ''}</td></tr>
+  </table></div>
+  <h2>Insumos</h2><div class="card scroll"><table class="t"><tr><th>Insumo</th><th class="n">Teórico</th><th class="n">Real</th><th class="n">Desvío</th><th>Lotes de insumo</th></tr>
+  ${its.map(it => { const s = itemStatus(it); const ins = insumo(it.id_insumo);
+    const lots = [...new Set(cargasOf(it.id_lote_item).map(c => c.id_lote_insumo).filter(Boolean))].map(x => { const li = find('Lotes_Insumo', 'id_lote_insumo', x); const p = li && find('Proveedores', 'id_proveedor', li.id_proveedor); return li ? esc(li.lote_proveedor) + (p ? ' (' + esc(p.nombre) + ')' : '') : esc(x); });
+    return `<tr><td>${esc(ins.nombre)}<div class="small muted">${esc(it.uso)}</div></td><td class="n">${fmt(s.teo)} ${esc(ins.unidad)}</td><td class="n b">${fmt(s.cargado)} ${esc(ins.unidad)}</td>
+      <td class="n" style="color:${s.st === 'ok' ? 'inherit' : 'var(--bad)'}">${s.cargado ? pct(s.dev) : '—'}</td><td class="small">${lots.join(', ') || '<span style="color:var(--bad)">sin lote</span>'}</td></tr>`; }).join('')}
+  </table></div>
+  <h2>Detalle de cargas</h2><div class="card scroll"><table class="t"><tr><th>Hora</th><th>Insumo</th><th class="n">Cantidad</th><th>Operario</th><th>Observación</th></tr>
+  ${its.flatMap(it => cargasOf(it.id_lote_item).map(c => ({ c, it }))).sort((a, b) => String(a.c.fecha_hora).localeCompare(String(b.c.fecha_hora))).map(({ c, it }) => { const ins = insumo(it.id_insumo);
+    return `<tr><td class="small">${fdt(c.fecha_hora)}</td><td>${esc(ins.nombre)}</td><td class="n">${fmt(c.cantidad)} ${esc(ins.unidad)}</td><td class="small">${esc(c.operario || '')}</td><td class="small">${esc(c.observacion || '')}</td></tr>`; }).join('')}
+  </table></div>
+  <h2>Proceso</h2><div class="card scroll"><table class="t"><tr><th>Paso</th><th>Previsto</th><th>Realizado</th><th>Operario</th></tr>
+  ${pasosOf(id).map(p => `<tr><td>${esc(pasoDef(p.id_paso).descripcion || p.id_paso)}${p.notas ? '<div class="small muted">' + esc(p.notas) + '</div>' : ''}</td><td class="small">${fdt(p.fecha_prevista)}</td><td class="small">${truthy(p.realizado) ? fdt(p.fecha_hora_real) : '<span style="color:var(--bad)">pendiente</span>'}</td><td class="small">${esc(p.operario || '')}</td></tr>`).join('')}
+  </table></div>
+  ${ev.length ? `<h2>Bitácora</h2><div class="card scroll"><table class="t"><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Operario</th></tr>
+  ${ev.map(e => `<tr><td class="small">${fdt(e.fecha_hora)}</td><td>${esc(e.tipo)}</td><td class="small">${e.tipo_filtro ? 'Filtro ' + esc(e.tipo_filtro) + (e.litros ? ', ' + fmt(e.litros, 1) + ' L. ' : '. ') : ''}${esc(e.notas || '')}</td><td class="small">${esc(e.operario || '')}</td></tr>`).join('')}</table></div>` : ''}
+  ${cs.length ? `<h2>Controles</h2><div class="card scroll"><table class="t"><tr><th>Fecha</th><th>Momento</th><th class="n">Temp.</th><th class="n">Densidad</th><th class="n">Brix</th><th>Ref.</th><th>Color / sabor</th></tr>
+  ${cs.map(c => `<tr><td class="small">${fdt(c.fecha_hora)}</td><td>${esc(c.momento)}</td><td class="n">${fmt(c.temperatura_c, 1)}</td><td class="n">${fdens(c.densidad_g_ml)}</td><td class="n">${fmt(c.brix, 1)}</td><td class="small">${esc(c.id_lote_referencia || '')}</td><td class="small">${esc(c.color_vs_ref || '')}${c.sabor_vs_ref ? ' / ' + esc(c.sabor_vs_ref) : ''}</td></tr>`).join('')}</table></div>` : ''}
+  ${labs.length ? `<h2>Laboratorio</h2><div class="card scroll"><table class="t"><tr><th>Parámetro</th><th class="n">Valor</th><th>Método</th><th>Laboratorio</th></tr>
+  ${labs.map(a => `<tr><td>${esc(a.parametro)}</td><td class="n">${esc(a.valor)} ${esc(a.unidad)}</td><td class="small">${esc(a.metodo)}</td><td class="small">${esc(a.laboratorio)} ${esc(a.protocolo)} · ${fd(a.fecha)}</td></tr>`).join('')}</table></div>` : ''}
+  <p class="small muted">Generado el ${fdt(nowIso())} por ${esc(session.nombre)}.</p></div>`;
+}
+
+/* ============================================================
+   Arranque
+   ============================================================ */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+render();
+if (session && navigator.onLine) sync();
+</script>
+</body>
+</html>
