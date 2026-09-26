@@ -7,6 +7,30 @@
  * Cada pedido se valida con el nombre y PIN del usuario (pestaña Usuarios).
  */
 
+// ---------------------------------------------------------------- configuración inicial
+
+/**
+ * Ejecutar UNA vez desde el editor (botón ▶ con "setup" seleccionado).
+ * Agrega la columna PIN a Usuarios y asigna un PIN provisorio de 4 dígitos a quien no tenga.
+ */
+function setup() {
+  const sh = sheet_('Usuarios');
+  let headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(norm_);
+  let col = headers.indexOf('pin') + 1;
+  if (!col) {
+    col = sh.getLastColumn() + 1;
+    sh.getRange(1, col).setValue('PIN');
+  }
+  const n = sh.getLastRow() - 1;
+  if (n > 0) {
+    const range = sh.getRange(2, col, n, 1);
+    range.setNumberFormat('@'); // texto, para no perder ceros a la izquierda
+    const pins = range.getValues().map(r => [r[0] ? String(r[0]) : String(Math.floor(1000 + Math.random() * 9000))]);
+    range.setValues(pins);
+  }
+  Logger.log('Listo. Revisá los PIN en la pestaña Usuarios.');
+}
+
 const ROLES = { 'Operario': 1, 'Supervisor': 2, 'Aprobador': 3, 'Admin': 4 };
 
 // Tablas que la app descarga (maestros + producción)
@@ -225,28 +249,4 @@ function applyOne_(op, user, cache) {
   }
 
   throw new Error('Operación desconocida');
-}
-
-// ---------------------------------------------------------------- configuración inicial
-
-/**
- * Ejecutar UNA vez desde el editor (botón ▶ con "setup" seleccionado).
- * Agrega la columna PIN a Usuarios y asigna un PIN provisorio de 4 dígitos a quien no tenga.
- */
-function setup() {
-  const sh = sheet_('Usuarios');
-  let headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(norm_);
-  let col = headers.indexOf('pin') + 1;
-  if (!col) {
-    col = sh.getLastColumn() + 1;
-    sh.getRange(1, col).setValue('PIN');
-  }
-  const n = sh.getLastRow() - 1;
-  if (n > 0) {
-    const range = sh.getRange(2, col, n, 1);
-    range.setNumberFormat('@'); // texto, para no perder ceros a la izquierda
-    const pins = range.getValues().map(r => [r[0] ? String(r[0]) : String(Math.floor(1000 + Math.random() * 9000))]);
-    range.setValues(pins);
-  }
-  Logger.log('Listo. Revisá los PIN en la pestaña Usuarios.');
 }
