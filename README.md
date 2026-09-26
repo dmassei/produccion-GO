@@ -52,6 +52,10 @@ La app sugiere `PREFIJO-AAMMDD` (por ejemplo `LY-261003`). El prefijo sale de un
 - Si el servidor rechaza algo (por ejemplo, PIN cambiado o falta de permiso), aparece un aviso rojo en el inicio con opción de reintentar o descartar.
 - Antes de iniciar una producción, abrí la app con conexión para que el lote quede descargado.
 
+## Corregir una carga mal registrada
+
+Cualquier usuario, mientras el lote no esté cerrado: tocá el insumo → en *Cargas registradas*, **Anular** junto a la carga equivocada → motivo y, si querés, la **cantidad correcta**. La carga original no se borra: queda tachada con quién la anuló, cuándo y por qué, y deja de sumar. La corrección se registra con la misma hora y lote, y el reporte de trazabilidad muestra ambas. Con el lote cerrado, solo un Admin puede corregir.
+
 ## Usuarios administradores
 
 El rol **Admin** es un ingreso aparte, pensado solo para correcciones. Cada persona que lo necesite tiene **dos filas** en *Usuarios*, con PIN distintos:
@@ -87,7 +91,7 @@ Recetas y usuarios se editan directamente en la planilla.
 ## Cambios futuros
 
 - **Si cambiás `Code.gs`:** Implementar → Gestionar implementaciones → ✏️ → Versión: **Nueva versión** → Implementar. La URL no cambia.
-- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v6` → `go-v7`) (así los celulares toman la versión nueva).
+- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v7` → `go-v8`) (así los celulares toman la versión nueva).
 - **Receta nueva o ajustada:** agregá la versión en *Recetas*, *Receta_Items* y *Pasos* con estado *Vigente* y pasá la anterior a *Obsoleta*. Los lotes viejos conservan la receta con la que se hicieron.
 
 ## Limpieza opcional

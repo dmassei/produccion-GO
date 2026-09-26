@@ -28,6 +28,7 @@ function setup() {
     const pins = range.getValues().map(r => [r[0] ? String(r[0]) : String(Math.floor(1000 + Math.random() * 9000))]);
     range.setValues(pins);
   }
+  ensureCols_('Cargas', CARGA_COLS, {});
   Logger.log('Listo. Revisá los PIN en la pestaña Usuarios.');
 }
 
@@ -217,6 +218,7 @@ function applyOne_(op, user, cache) {
       }
     }
 
+    if (op.table === 'Cargas' && row.reemplaza) ensureCols_('Cargas', CARGA_COLS, cache);
     const t = tableInfo_(op.table, cache);
     const key = String(row[t.headers[0]] || '');
     if (!key) throw new Error('Falta la clave ' + t.headers[0]);
@@ -227,6 +229,7 @@ function applyOne_(op, user, cache) {
     return { status: 'ok' };
   }
 
+  if (op.type === 'anular') return anularCarga_(op, user, cache);
   if (op.type === 'update' && op.admin) return adminUpdate_(op, user, cache);
   if (op.type === 'delete') return adminDelete_(op, user, cache);
   if (op.type === 'deleteLote') return adminDeleteLote_(op, user, cache);
@@ -343,5 +346,34 @@ function adminDeleteLote_(op, user, cache) {
   });
   detalle.Lotes = deleteWhere_('Lotes', r => String(r.id_lote) === id, cache);
   audit_(user, 'Lote eliminado', 'Lotes', id, lote, detalle, op.motivo);
+  return { status: 'ok' };
+}
+
+// ---------------------------------------------------------------- anulación de cargas (cualquier usuario)
+// Una carga mal registrada no se borra: se anula con motivo, queda visible y no suma.
+const CARGA_COLS = ['Anulada', 'Anulada_por', 'Fecha_anulacion', 'Motivo_anulacion', 'Reemplaza'];
+
+function ensureCols_(name, cols, cache) {
+  const sh = sheet_(name);
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(norm_);
+  let last = sh.getLastColumn();
+  cols.forEach(c => { if (headers.indexOf(norm_(c)) < 0) sh.getRange(1, ++last).setValue(c); });
+  delete cache[name];
+}
+
+function anularCarga_(op, user, cache) {
+  if (!op.motivo || !String(op.motivo).trim()) throw new Error('Falta el motivo de la anulación');
+  ensureCols_('Cargas', CARGA_COLS, cache);
+  const t = tableInfo_('Cargas', cache);
+  const idx = t.keys.indexOf(String(op.key));
+  if (idx < 0) throw new Error('No existe la carga ' + op.key);
+  const c = rowObj_(t, idx);
+  if (c.anulada === true || String(c.anulada).toUpperCase() === 'TRUE') return { status: 'dup' };
+  const item = readTable_('Lote_Items').rows.find(r => String(r.id_lote_item) === String(c.id_lote_item)) || {};
+  const lote = readTable_('Lotes').rows.find(r => String(r.id_lote) === String(item.id_lote)) || {};
+  if (lote.etapa === 'Cerrado' && user.nivel < 4) throw new Error('El lote está cerrado: solo un Admin puede corregirlo');
+  const set = { anulada: true, anulada_por: user.nombre, fecha_anulacion: new Date(), motivo_anulacion: String(op.motivo) };
+  Object.keys(set).forEach(f => t.sh.getRange(idx + 2, t.headers.indexOf(f) + 1).setValue(set[f]));
+  audit_(user, 'Carga anulada', 'Cargas', op.key, { cantidad: c.cantidad, fecha_hora: c.fecha_hora, operario: c.operario }, null, op.motivo);
   return { status: 'ok' };
 }

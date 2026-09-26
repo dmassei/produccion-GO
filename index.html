@@ -125,7 +125,7 @@ table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
 // Pegá acá la URL de la implementación de Apps Script (termina en /exec).
 // Si queda vacía, la app la pide la primera vez.
 const DEFAULT_API = '';
-const APP_VERSION = '2026-09-26 v6';
+const APP_VERSION = '2026-09-26 v7';
 
 const ETAPAS = ['Carga', 'Maceración', 'Escurrido', 'Filtrado', 'Control', 'Cerrado'];
 const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
@@ -206,6 +206,9 @@ function applyLocal(d, op) {
   } else if (op.type === 'update') {
     const r = t.find(r => same(r[key], op.key));
     if (r) Object.assign(r, op.fields, { _pending: true });
+  } else if (op.type === 'anular') {
+    const r = t.find(r => same(r[key], op.key));
+    if (r) Object.assign(r, { anulada: true, anulada_por: op.by, fecha_anulacion: op.at, motivo_anulacion: op.motivo, _pending: true });
   } else if (op.type === 'delete') {
     d[op.table] = t.filter(r => !same(r[key], op.key));
   } else if (op.type === 'deleteLote') {
@@ -234,6 +237,7 @@ function recetaLabel(r) {
   return `${p ? p.nombre : ''} · ${r.variante || ''} v${r.version || 1}`;
 }
 const itemsOf = id => S.Lote_Items.filter(i => same(i.id_lote, id)).sort((a, b) => num(a.orden_carga) - num(b.orden_carga));
+const anulada = c => truthy(c.anulada);
 const cargasOf = id => S.Cargas.filter(c => same(c.id_lote_item, id)).sort((a, b) => String(a.fecha_hora).localeCompare(String(b.fecha_hora)));
 const pasoDef = id => find('Pasos', 'id_paso', id) || {};
 function pasosOf(id) {
@@ -241,7 +245,7 @@ function pasosOf(id) {
     .sort((a, b) => (num(pasoDef(a.id_paso).orden) - num(pasoDef(b.id_paso).orden)) || String(a.fecha_prevista).localeCompare(String(b.fecha_prevista)));
 }
 function itemStatus(it) {
-  const cargado = cargasOf(it.id_lote_item).reduce((s, c) => s + (num(c.cantidad) || 0), 0);
+  const cargado = cargasOf(it.id_lote_item).filter(c => !anulada(c)).reduce((s, c) => s + (num(c.cantidad) || 0), 0);
   const teo = num(it.cant_teorica) || 0;
   const ri = find('Receta_Items', 'id_item', it.id_item);
   let tol = ri ? num(ri.tolerancia) : NaN; if (isNaN(tol)) tol = TOL_DEFAULT;
@@ -625,14 +629,14 @@ function tabCarga(l) {
     const s = itemStatus(it); const ins = insumo(it.id_insumo); const u = esc(ins.unidad);
     const chip = { ok: '<span class="chip ok">Completo</span>', pendiente: '<span class="chip">Pendiente</span>', parcial: '<span class="chip warn">Parcial</span>', exceso: '<span class="chip bad">Excedido</span>' }[s.st];
     const w = s.teo ? Math.min(100, Math.round(100 * s.cargado / s.teo)) : 0;
-    const cs = cargasOf(it.id_lote_item);
+    const all = cargasOf(it.id_lote_item); const cs = all.filter(c => !anulada(c)); const nAn = all.length - cs.length;
     return `<div class="card item" ${canLoad ? `data-act="carga" data-item="${esc(it.id_lote_item)}"` : ''}>
       <div class="row"><div class="grow"><div class="b">${esc(ins.nombre)}</div>
       <div class="small muted">${esc(it.uso)}${s.ri && s.ri.forma_de_carga ? ' · ' + esc(s.ri.forma_de_carga) : ''} · tolerancia ±${pct(s.tol, 1)}</div></div>${chip}</div>
       <div class="q"><div><span>Teórico</span><b>${fmt(s.teo)}</b> ${u}</div><div><span>Cargado</span><b>${fmt(s.cargado)}</b> ${u}</div>
       <div><span>${s.pend >= 0 ? 'Falta' : 'Exceso'}</span><b>${fmt(Math.abs(s.pend))}</b> ${u}</div></div>
       <div class="bar ${s.st === 'ok' ? 'ok' : s.st === 'exceso' ? 'bad' : ''}"><i style="width:${w}%"></i></div>
-      ${cs.length ? `<div class="small muted" style="margin-top:8px">${cs.length} carga(s) · última ${ft(cs[cs.length - 1].fecha_hora)} (${fmt(cs[cs.length - 1].cantidad)} ${u})${cs.some(c => c._pending) ? ' <span class="pend">⟳ sin enviar</span>' : ''}</div>` : ''}
+      ${cs.length || nAn ? `<div class="small muted" style="margin-top:8px">${cs.length} carga(s)${cs.length ? ` · última ${ft(cs[cs.length - 1].fecha_hora)} (${fmt(cs[cs.length - 1].cantidad)} ${u})` : ''}${nAn ? ` · <span style="color:var(--bad)">${nAn} anulada(s)</span>` : ''}${all.some(c => c._pending) ? ' <span class="pend">⟳ sin enviar</span>' : ''}</div>` : ''}
     </div>`;
   }).join('') + (canLoad ? `<p class="small muted">Tocá un insumo para registrar una carga. La hora se registra sola.</p>` : '');
 }
@@ -644,8 +648,9 @@ function lotesInsumoOpts(idInsumo, sel) {
 ACTIONS.carga = d => openCarga(d.item);
 function openCarga(itemId, keep = {}) {
   const it = find('Lote_Items', 'id_lote_item', itemId); const s = itemStatus(it); const ins = insumo(it.id_insumo);
-  const cs = cargasOf(itemId);
-  const lastLot = keep.lote || (cs.length ? cs[cs.length - 1].id_lote_insumo : '');
+  const canFix = (lote(it.id_lote) || {}).etapa !== 'Cerrado';
+  const cs = cargasOf(itemId); const vivas = cs.filter(c => !anulada(c));
+  const lastLot = keep.lote || (vivas.length ? vivas[vivas.length - 1].id_lote_insumo : '');
   const opts = lotesInsumoOpts(it.id_insumo, lastLot);
   openModal(`<h2 style="margin-top:0">${esc(ins.nombre)}</h2>
     <p class="small muted">Teórico ${fmt(s.teo)} ${esc(ins.unidad)} · cargado ${fmt(s.cargado)} · falta ${fmt(Math.max(0, s.pend))} ${esc(ins.unidad)}</p>
@@ -663,10 +668,35 @@ function openCarga(itemId, keep = {}) {
         <button class="btn" name="again" value="1">Guardar y otra</button><button class="btn primary">Guardar</button></div>
     </form>
     ${cs.length ? `<h2>Cargas registradas</h2><div class="list">${cs.slice().reverse().map(c => { const li = find('Lotes_Insumo', 'id_lote_insumo', c.id_lote_insumo);
-      return `<div class="li small"><b>${fmt(c.cantidad)} ${esc(ins.unidad)}</b> · ${fdt(c.fecha_hora)} · ${esc(c.operario || '')}${li ? ' · lote ' + esc(li.lote_proveedor) : ''}${c.observacion ? '<br><span class="muted">' + esc(c.observacion) + '</span>' : ''}${pendMark(c)}</div>`; }).join('')}</div>` : ''}`);
+      const an = anulada(c);
+      return `<div class="li small row"><div class="grow" ${an ? 'style="opacity:.6"' : ''}><span style="${an ? 'text-decoration:line-through' : ''}"><b>${fmt(c.cantidad)} ${esc(ins.unidad)}</b> · ${fdt(c.fecha_hora)} · ${esc(c.operario || '')}${li ? ' · lote ' + esc(li.lote_proveedor) : ''}</span>${pendMark(c)}
+        ${c.observacion ? '<br><span class="muted">' + esc(c.observacion) + '</span>' : ''}
+        ${an ? `<br><span style="color:var(--bad)">Anulada por ${esc(c.anulada_por || '')}: ${esc(c.motivo_anulacion || '')}</span>` : ''}</div>
+        ${!an && canFix ? `<button type="button" class="btn sm del" data-act="anular" data-id="${esc(c.id_carga)}">Anular</button>` : ''}</div>`; }).join('')}</div>` : ''}`);
   const f = $('#fCarga');
   f.addEventListener('click', e => { if (e.target.name === 'again') f.dataset.again = '1'; else if (e.target.tagName === 'BUTTON') f.dataset.again = ''; });
 }
+ACTIONS.anular = d => {
+  const c = find('Cargas', 'id_carga', d.id); const it = find('Lote_Items', 'id_lote_item', c.id_lote_item); const ins = insumo(it.id_insumo);
+  openModal(`<h2 style="margin-top:0">Anular carga</h2>
+    <p><b>${esc(ins.nombre)}: ${fmt(c.cantidad)} ${esc(ins.unidad)}</b><br><span class="small muted">${fdt(c.fecha_hora)} · ${esc(c.operario || '')}</span></p>
+    <div class="note info">La carga no se borra: queda tachada en el registro, con tu nombre y el motivo, y deja de sumar.</div>
+    <form data-form="anular" data-id="${esc(d.id)}">
+      <label class="f">Motivo<input class="in" name="motivo" required placeholder="Ej. se tipeó 250 en lugar de 25" autofocus></label>
+      <label class="f">Cantidad correcta (${esc(ins.unidad)}) <span class="h">(opcional: si la completás, se registra en su lugar con la misma hora y lote)</span>
+        <input class="in" name="correcta" inputmode="decimal"></label>
+      <div class="btns"><button type="button" class="btn" data-act="carga" data-item="${esc(it.id_lote_item)}">Volver</button><button class="btn danger">Anular</button></div></form>`);
+};
+FORMS.anular = (d, f) => {
+  const c = find('Cargas', 'id_carga', f.dataset.id);
+  const q = num(d.correcta);
+  if (d.correcta && (isNaN(q) || q <= 0)) { toast('Cantidad correcta inválida'); return; }
+  const ops = [{ type: 'anular', table: 'Cargas', key: c.id_carga, motivo: d.motivo }];
+  if (!isNaN(q)) ops.push({ type: 'insert', table: 'Cargas', row: { id_carga: uid('CAR'), id_lote_item: c.id_lote_item, cantidad: q, id_lote_insumo: c.id_lote_insumo,
+    fecha_hora: c.fecha_hora, operario: session.nombre, hora_sync: '', observacion: `Corrige carga de ${fdt(c.fecha_hora)} (${fmt(c.cantidad)}): ${d.motivo}`, reemplaza: c.id_carga } });
+  enqueue(ops);
+  openCarga(c.id_lote_item); toast(ops.length > 1 ? 'Carga corregida' : 'Carga anulada');
+};
 LIVE.loteSel = el => { $('#nuevoLoteBox').hidden = el.value !== '__nuevo'; };
 LIVE.carga = el => {
   const f = $('#fCarga'); const it = find('Lote_Items', 'id_lote_item', f.dataset.item); const s = itemStatus(it);
@@ -859,13 +889,15 @@ function viewReporte(id) {
   </table></div>
   <h2>Insumos</h2><div class="card scroll"><table class="t"><tr><th>Insumo</th><th class="n">Teórico</th><th class="n">Real</th><th class="n">Desvío</th><th>Lotes de insumo</th></tr>
   ${its.map(it => { const s = itemStatus(it); const ins = insumo(it.id_insumo);
-    const lots = [...new Set(cargasOf(it.id_lote_item).map(c => c.id_lote_insumo).filter(Boolean))].map(x => { const li = find('Lotes_Insumo', 'id_lote_insumo', x); const p = li && find('Proveedores', 'id_proveedor', li.id_proveedor); return li ? esc(li.lote_proveedor) + (p ? ' (' + esc(p.nombre) + ')' : '') : esc(x); });
+    const lots = [...new Set(cargasOf(it.id_lote_item).filter(c => !anulada(c)).map(c => c.id_lote_insumo).filter(Boolean))].map(x => { const li = find('Lotes_Insumo', 'id_lote_insumo', x); const p = li && find('Proveedores', 'id_proveedor', li.id_proveedor); return li ? esc(li.lote_proveedor) + (p ? ' (' + esc(p.nombre) + ')' : '') : esc(x); });
     return `<tr><td>${esc(ins.nombre)}<div class="small muted">${esc(it.uso)}</div></td><td class="n">${fmt(s.teo)} ${esc(ins.unidad)}</td><td class="n b">${fmt(s.cargado)} ${esc(ins.unidad)}</td>
       <td class="n" style="color:${s.st === 'ok' ? 'inherit' : 'var(--bad)'}">${s.cargado ? pct(s.dev) : '—'}</td><td class="small">${lots.join(', ') || '<span style="color:var(--bad)">sin lote</span>'}</td></tr>`; }).join('')}
   </table></div>
   <h2>Detalle de cargas</h2><div class="card scroll"><table class="t"><tr><th>Hora</th><th>Insumo</th><th class="n">Cantidad</th><th>Operario</th><th>Observación</th></tr>
   ${its.flatMap(it => cargasOf(it.id_lote_item).map(c => ({ c, it }))).sort((a, b) => String(a.c.fecha_hora).localeCompare(String(b.c.fecha_hora))).map(({ c, it }) => { const ins = insumo(it.id_insumo);
-    return `<tr><td class="small">${fdt(c.fecha_hora)}</td><td>${esc(ins.nombre)}</td><td class="n">${fmt(c.cantidad)} ${esc(ins.unidad)}</td><td class="small">${esc(c.operario || '')}</td><td class="small">${esc(c.observacion || '')}</td></tr>`; }).join('')}
+    const an = anulada(c);
+    return `<tr ${an ? 'style="color:var(--muted)"' : ''}><td class="small">${fdt(c.fecha_hora)}</td><td>${esc(ins.nombre)}</td><td class="n" ${an ? 'style="text-decoration:line-through"' : ''}>${fmt(c.cantidad)} ${esc(ins.unidad)}</td><td class="small">${esc(c.operario || '')}</td>
+      <td class="small">${esc(c.observacion || '')}${an ? `<div style="color:var(--bad)">ANULADA por ${esc(c.anulada_por || '')} el ${fdt(c.fecha_anulacion)}: ${esc(c.motivo_anulacion || '')}</div>` : ''}</td></tr>`; }).join('')}
   </table></div>
   <h2>Proceso</h2><div class="card scroll"><table class="t"><tr><th>Paso</th><th>Previsto</th><th>Realizado</th><th>Operario</th></tr>
   ${pasosOf(id).map(p => `<tr><td>${esc(pasoDef(p.id_paso).descripcion || p.id_paso)}${p.notas ? '<div class="small muted">' + esc(p.notas) + '</div>' : ''}</td><td class="small">${fdt(p.fecha_prevista)}</td><td class="small">${truthy(p.realizado) ? fdt(p.fecha_hora_real) : '<span style="color:var(--bad)">pendiente</span>'}</td><td class="small">${esc(p.operario || '')}</td></tr>`).join('')}
@@ -1079,7 +1111,7 @@ function viewPanelLote(id) {
     <button class="btn danger" data-act="adminDelLote" data-k="${esc(id)}">Eliminar lote</button></div>
   <h2>Cargas (${cargas.length})</h2>
   <div class="card list">${cargas.map(({ c, it }) => { const ins = insumo(it.id_insumo); const li = find('Lotes_Insumo', 'id_lote_insumo', c.id_lote_insumo);
-    return `<div class="li"><div class="b">${esc(ins.nombre)} · ${fmt(c.cantidad)} ${esc(ins.unidad)}${pendMark(c)}</div>
+    return `<div class="li"><div class="b">${esc(ins.nombre)} · ${fmt(c.cantidad)} ${esc(ins.unidad)}${anulada(c) ? ' <span class="chip bad">Anulada</span>' : ''}${pendMark(c)}</div>
     <div class="small muted">${fdt(c.fecha_hora)} · ${esc(c.operario || '')}${li ? ' · lote ' + esc(li.lote_proveedor) : ''}${c.observacion ? ' · ' + esc(c.observacion) : ''}</div>
     <div class="row" style="margin-top:6px">${btn('Cargas', c.id_carga, ins.nombre + ' ' + fmt(c.cantidad) + ' ' + ins.unidad + ' · ' + fdt(c.fecha_hora))}</div></div>`; }).join('') || '<p class="muted">Sin cargas.</p>'}</div>
   <h2>Cantidades teóricas</h2>
