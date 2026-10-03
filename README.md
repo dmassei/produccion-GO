@@ -64,6 +64,7 @@ En la pestaña *Pasos*, la columna **Tipo_evento** vincula un paso con un tipo d
 - Tocar **Hecho** en un paso vinculado abre directamente el formulario del evento con el tipo elegido: un solo registro sirve para las dos cosas.
 - Si un Admin borra el evento, el paso vuelve a pendiente.
 - Los eventos que ya existían se vinculan solos al actualizar.
+- **Pasos que se repiten:** la columna **Repetir_cada_h** de *Pasos* (48 en "Revolver y rotar bolsas") programa el siguiente a esa cantidad de horas desde que se hizo el anterior, hasta el fin de la maceración de la receta. Vale igual si se registra desde Proceso o desde Bitácora. Dejarla vacía desactiva la repetición.
 
 ## Stock de insumos
 
@@ -114,7 +115,7 @@ Recetas y usuarios se editan directamente en la planilla.
 ## Cambios futuros
 
 - **Si cambiás `Code.gs`:** Implementar → Gestionar implementaciones → ✏️ → Versión: **Nueva versión** → Implementar. La URL no cambia.
-- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v9` → `go-v10`) (así los celulares toman la versión nueva).
+- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v10` → `go-v11`) (así los celulares toman la versión nueva).
 - **Receta nueva o ajustada:** agregá la versión en *Recetas*, *Receta_Items* y *Pasos* con estado *Vigente* y pasá la anterior a *Obsoleta*. Los lotes viejos conservan la receta con la que se hicieron.
 
 ## Limpieza opcional

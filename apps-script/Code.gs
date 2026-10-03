@@ -396,7 +396,7 @@ function anularCarga_(op, user, cache) {
 
 // ---------------------------------------------------------------- esquema
 // Crea solo las columnas y pestañas que agregan las versiones nuevas (una vez por versión).
-const SCHEMA_VERSION = '4';
+const SCHEMA_VERSION = '5';
 function ensureSchema_() {
   const props = PropertiesService.getScriptProperties();
   if (props.getProperty('schema') === SCHEMA_VERSION) return;
@@ -408,8 +408,10 @@ function ensureSchema_() {
   }
   ensureCols_('Pasos', ['Tipo_evento'], {});
   ensureCols_('Pasos_Lote', ['ID_Evento'], {});
+  ensureCols_('Pasos', ['Repetir_cada_h'], {});
   prefillTipoEvento_();
   backfillLinks_();
+  backfillRepeticiones_();
   props.setProperty('schema', SCHEMA_VERSION);
 }
 
@@ -423,7 +425,9 @@ function prefillTipoEvento_() {
   const sh = sheet_('Pasos');
   const values = sh.getDataRange().getValues();
   const h = values[0].map(norm_); const cD = h.indexOf('descripcion'), cT = h.indexOf('tipo_evento');
+  const cR = h.indexOf('repetir_cada_h');
   for (let i = 1; i < values.length; i++) {
+    if (cR >= 0 && !values[i][cR] && /revolv|rotar/i.test(String(values[i][cD]))) sh.getRange(i + 1, cR + 1).setValue(48);
     if (values[i][cT]) continue;
     const m = TIPO_EVENTO_DEFAULT.find(([re]) => re.test(String(values[i][cD])));
     if (m) sh.getRange(i + 1, cT + 1).setValue(m[1]);
@@ -470,4 +474,26 @@ function backfillLinks_() {
     .filter(e => !linked.has(String(e.id_evento)))
     .sort((a, b) => String(a.fecha_hora).localeCompare(String(b.fecha_hora)))
     .forEach(e => linkEvento_(e, null, {}));
+}
+
+// Programa la próxima repetición para lotes en curso cuyo paso repetible ya está todo hecho
+function backfillRepeticiones_() {
+  const pasos = readTable_('Pasos').rows.filter(p => Number(p.repetir_cada_h) > 0);
+  if (!pasos.length) return;
+  const recetas = {}; readTable_('Recetas').rows.forEach(r => recetas[String(r.id_receta)] = r);
+  const pl = readTable_('Pasos_Lote').rows;
+  const sh = sheet_('Pasos_Lote'); const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(norm_);
+  readTable_('Lotes').rows.filter(l => l.etapa !== 'Cerrado').forEach(l => {
+    const fin = new Date(l.fecha_hora_inicio).getTime() + (Number((recetas[String(l.id_receta)] || {}).dias_maceracion) || 0) * 864e5;
+    pasos.filter(p => String(p.id_receta) === String(l.id_receta)).forEach(p => {
+      const occ = pl.filter(x => String(x.id_lote) === String(l.id_lote) && String(x.id_paso) === String(p.id_paso));
+      if (!occ.length || occ.some(x => !(x.realizado === true || String(x.realizado).toUpperCase() === 'TRUE'))) return;
+      const last = Math.max.apply(null, occ.map(x => new Date(x.fecha_hora_real || x.fecha_prevista).getTime()));
+      const next = last + Number(p.repetir_cada_h) * 3600e3;
+      if (!(next < fin)) return;
+      const base = occ.map(x => String(x.id_paso_lote)).sort((a, b) => a.length - b.length)[0].replace(/-R\d+$/, '');
+      const row = { id_paso_lote: base + '-R' + (occ.length + 1), id_lote: l.id_lote, id_paso: p.id_paso, fecha_prevista: new Date(next), realizado: false };
+      sh.appendRow(h.map(c => row[c] === undefined ? '' : row[c]));
+    });
+  });
 }

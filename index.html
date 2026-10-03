@@ -126,7 +126,7 @@ table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
 // Pegá acá la URL de la implementación de Apps Script (termina en /exec).
 // Si queda vacía, la app la pide la primera vez.
 const DEFAULT_API = '';
-const APP_VERSION = '2026-10-03 v9';
+const APP_VERSION = '2026-10-03 v10';
 
 const ETAPAS = ['Carga', 'Maceración', 'Escurrido', 'Filtrado', 'Control', 'Cerrado'];
 const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
@@ -197,11 +197,29 @@ function emptyData() { const d = {}; TABLES.forEach(t => d[t] = []); return d; }
 const normT = x => String(x || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const tiposPaso = idPaso => { const p = (S && S.Pasos ? S.Pasos : snapshot ? snapshot.Pasos || [] : []).find(x => same(x.id_paso, idPaso));
   return String((p && p.tipo_evento) || '').split(',').map(normT).filter(Boolean); };
-function linkLocal(d, ev, hint) {
+function pickPaso(d, ev, hint) {
   const tipo = normT(ev.tipo); const t = new Date(ev.fecha_hora).getTime();
   const cand = (d.Pasos_Lote || []).filter(p => same(p.id_lote, ev.id_lote) && !truthy(p.realizado) && tiposPasoD(d, p.id_paso).includes(tipo));
-  const p = cand.find(x => same(x.id_paso_lote, hint)) ||
+  return cand.find(x => same(x.id_paso_lote, hint)) ||
     cand.sort((a, b) => Math.abs(new Date(a.fecha_prevista) - t) - Math.abs(new Date(b.fecha_prevista) - t))[0];
+}
+// Pasos que se repiten (columna Repetir_cada_h en Pasos): al completar uno, se programa el siguiente
+// a partir de la hora real, mientras no pase el fin de la maceración de la receta.
+function nextOccurrence(pl, doneAt) {
+  const def = pasoDef(pl.id_paso); const cada = num(def.repetir_cada_h);
+  if (!cada || cada <= 0) return null;
+  const l = lote(pl.id_lote); const r = l && receta(l.id_receta); if (!l || !r) return null;
+  const fin = new Date(l.fecha_hora_inicio).getTime() + (num(r.dias_maceracion) || 0) * 864e5;
+  const next = new Date(doneAt).getTime() + cada * 3600e3;
+  if (!(next < fin)) return null;
+  const occ = S.Pasos_Lote.filter(p => same(p.id_lote, pl.id_lote) && same(p.id_paso, pl.id_paso));
+  if (occ.some(p => !truthy(p.realizado) && !same(p.id_paso_lote, pl.id_paso_lote))) return null; // ya hay una pendiente
+  const base = String(occ.map(p => p.id_paso_lote).sort((a, b) => a.length - b.length)[0]).replace(/-R\d+$/, '');
+  return { type: 'insert', table: 'Pasos_Lote', row: { id_paso_lote: `${base}-R${occ.length + 1}`, id_lote: pl.id_lote, id_paso: pl.id_paso,
+    fecha_prevista: new Date(next).toISOString(), realizado: false, fecha_hora_real: '', operario: '', notas: '' } };
+}
+function linkLocal(d, ev, hint) {
+  const p = pickPaso(d, ev, hint);
   if (p) Object.assign(p, { realizado: true, fecha_hora_real: ev.fecha_hora, operario: ev.operario, id_evento: ev.id_evento,
     notas: 'Desde bitácora' + (ev.notas ? ': ' + ev.notas : ''), _pending: true });
 }
@@ -842,7 +860,8 @@ function tabProceso(l) {
   const ps = pasosOf(l.id_lote);
   if (!ps.length) return `<p class="muted">Este lote no tiene pasos de proceso.</p>`;
   return `<div class="card list">${ps.map(p => { const def = pasoDef(p.id_paso); const st = pasoState(p);
-    return `<div class="li row"><div class="grow"><div class="b">${esc(def.descripcion || p.id_paso)}${pendMark(p)}</div>
+    const rep = String(p.id_paso_lote).match(/-R(\d+)$/);
+    return `<div class="li row"><div class="grow"><div class="b">${esc(def.descripcion || p.id_paso)}${rep ? ` <span class="chip">${rep[1]}.ª vez</span>` : ''}${pendMark(p)}</div>
       <div class="small muted">${esc(def.etapa || '')} · previsto ${fdt(p.fecha_prevista)}${st === 'hecho' ? ` · <span style="color:var(--ok)">hecho ${fdt(p.fecha_hora_real)}${p.operario ? ' · ' + esc(p.operario) : ''}${p.id_evento ? ' · desde bitácora' : ''}</span>` : ''}</div>
       ${p.notas ? `<div class="small">${esc(String(p.notas).replace(/^Desde bitácora: ?/, ''))}</div>` : ''}</div>
       ${st === 'hecho' ? '<span class="chip ok">✓</span>' : l.etapa === 'Cerrado' ? '' : `<button class="btn ${st === 'vencido' ? 'danger' : ''}" data-act="paso" data-id="${esc(p.id_paso_lote)}">${st === 'vencido' ? 'Vencida · Hecho' : 'Hecho'}</button>`}</div>`; }).join('')}</div>`;
@@ -859,7 +878,8 @@ ACTIONS.paso = d => {
       <div class="btns"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary">Marcar como hecho</button></div></form>`);
 };
 FORMS.paso = (d, f) => {
-  enqueue([{ type: 'update', table: 'Pasos_Lote', key: f.dataset.id, fields: { realizado: true, fecha_hora_real: fromLocalInput(d.cuando), notas: d.notas || '', operario: session.nombre } }]);
+  const cuando = fromLocalInput(d.cuando); const nx = nextOccurrence(find('Pasos_Lote', 'id_paso_lote', f.dataset.id), cuando);
+  enqueue([{ type: 'update', table: 'Pasos_Lote', key: f.dataset.id, fields: { realizado: true, fecha_hora_real: cuando, notas: d.notas || '', operario: session.nombre } }].concat(nx ? [nx] : []));
   closeModal(); toast('Paso registrado');
 };
 
@@ -884,9 +904,11 @@ ACTIONS.evento = d => openModal(`<h2 style="margin-top:0">${d.titulo ? esc(d.tit
 LIVE.tipoEv = el => { $('#filtroBox').hidden = el.value !== 'Filtrado'; };
 FORMS.evento = (d, f) => {
   if (!d.notas && d.tipo !== 'Filtrado') { toast('Agregá una nota'); return; }
-  enqueue([{ type: 'insert', table: 'Eventos', link: f.dataset.paso || '', row: { id_evento: uid('EV'), id_lote: f.dataset.id, tipo: d.tipo, fecha_hora: fromLocalInput(d.cuando),
-    operario: session.nombre, tipo_filtro: d.tipo === 'Filtrado' ? (d.tipo_filtro || '') : '', litros: d.tipo === 'Filtrado' && !isNaN(num(d.litros)) ? num(d.litros) : '', notas: d.notas || '' } }]);
-  closeModal(); toast(f.dataset.paso ? 'Paso registrado en bitácora' : 'Evento guardado');
+  const row = { id_evento: uid('EV'), id_lote: f.dataset.id, tipo: d.tipo, fecha_hora: fromLocalInput(d.cuando),
+    operario: session.nombre, tipo_filtro: d.tipo === 'Filtrado' ? (d.tipo_filtro || '') : '', litros: d.tipo === 'Filtrado' && !isNaN(num(d.litros)) ? num(d.litros) : '', notas: d.notas || '' };
+  const pl = pickPaso(S, row, f.dataset.paso); const nx = pl && nextOccurrence(pl, row.fecha_hora);
+  enqueue([{ type: 'insert', table: 'Eventos', link: f.dataset.paso || '', row }].concat(nx ? [nx] : []));
+  closeModal(); toast(pl ? (nx ? `Paso registrado · próximo ${fdt(nx.row.fecha_prevista)}` : 'Paso registrado en bitácora') : 'Evento guardado');
 };
 
 /* ----- controles ----- */
