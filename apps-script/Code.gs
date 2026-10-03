@@ -239,6 +239,7 @@ function applyOne_(op, user, cache) {
     const values = t.headers.map(h => toCell_(h, row[h]));
     t.sh.appendRow(values);
     t.keys.push(key);
+    if (op.table === 'Eventos') linkEvento_(row, op.link, cache);
     if (op.table === 'Ajustes_Stock') audit_(user, 'Ajuste de stock', 'Lotes_Insumo', row.id_lote_insumo, null, { cantidad: row.cantidad, tipo: row.tipo }, row.motivo);
     return { status: 'ok' };
   }
@@ -327,6 +328,7 @@ function adminDelete_(op, user, cache) {
   const idx = t.keys.indexOf(String(op.key));
   if (idx < 0) return { status: 'dup' }; // ya no estaba
   const before = rowObj_(t, idx);
+  if (op.table === 'Eventos') unlinkEvento_(op.key, cache);
   t.sh.deleteRow(idx + 2);
   t.keys.splice(idx, 1);
   audit_(user, 'Borrado', op.table, op.key, before, null, op.motivo);
@@ -394,7 +396,7 @@ function anularCarga_(op, user, cache) {
 
 // ---------------------------------------------------------------- esquema
 // Crea solo las columnas y pestañas que agregan las versiones nuevas (una vez por versión).
-const SCHEMA_VERSION = '3';
+const SCHEMA_VERSION = '4';
 function ensureSchema_() {
   const props = PropertiesService.getScriptProperties();
   if (props.getProperty('schema') === SCHEMA_VERSION) return;
@@ -404,5 +406,68 @@ function ensureSchema_() {
   if (!ss.getSheetByName('Ajustes_Stock')) {
     ss.insertSheet('Ajustes_Stock').appendRow(['ID_Ajuste', 'ID_Lote_Insumo', 'Cantidad', 'Tipo', 'Fecha_hora', 'Usuario', 'Motivo']);
   }
+  ensureCols_('Pasos', ['Tipo_evento'], {});
+  ensureCols_('Pasos_Lote', ['ID_Evento'], {});
+  prefillTipoEvento_();
+  backfillLinks_();
   props.setProperty('schema', SCHEMA_VERSION);
+}
+
+// ---------------------------------------------------------------- pasos ↔ eventos de bitácora
+// Un paso con Tipo_evento (ej. "Revuelto, Rotación") se marca hecho al registrar un evento de ese tipo.
+// Cada evento cierra un solo paso: el pendiente con fecha prevista más cercana a la del evento.
+const TIPO_EVENTO_DEFAULT = [[/revolv|rotar|rotaci/i, 'Revuelto, Rotación'], [/escurr/i, 'Escurrido'], [/filtrad/i, 'Filtrado']];
+const tiposDe_ = v => String(v || '').split(',').map(x => norm_(x)).filter(Boolean);
+
+function prefillTipoEvento_() {
+  const sh = sheet_('Pasos');
+  const values = sh.getDataRange().getValues();
+  const h = values[0].map(norm_); const cD = h.indexOf('descripcion'), cT = h.indexOf('tipo_evento');
+  for (let i = 1; i < values.length; i++) {
+    if (values[i][cT]) continue;
+    const m = TIPO_EVENTO_DEFAULT.find(([re]) => re.test(String(values[i][cD])));
+    if (m) sh.getRange(i + 1, cT + 1).setValue(m[1]);
+  }
+}
+
+function linkEvento_(ev, hint, cache) {
+  const tipo = norm_(ev.tipo);
+  const pasos = {}; readTable_('Pasos').rows.forEach(p => pasos[String(p.id_paso)] = tiposDe_(p.tipo_evento));
+  const t = tableInfo_('Pasos_Lote', cache);
+  const values = t.sh.getRange(2, 1, Math.max(t.keys.length, 1), t.headers.length).getValues();
+  const col = n => t.headers.indexOf(n);
+  const evT = new Date(ev.fecha_hora).getTime();
+  let best = -1, bestD = Infinity;
+  values.forEach((r, i) => {
+    if (String(r[col('id_lote')]) !== String(ev.id_lote)) return;
+    if (r[col('realizado')] === true || String(r[col('realizado')]).toUpperCase() === 'TRUE') return;
+    if ((pasos[String(r[col('id_paso')])] || []).indexOf(tipo) < 0) return;
+    if (hint && String(r[0]) === String(hint)) { best = i; bestD = -1; return; }
+    const d = Math.abs(new Date(r[col('fecha_prevista')]).getTime() - evT);
+    if (bestD >= 0 && d < bestD) { best = i; bestD = d; }
+  });
+  if (best < 0) return;
+  const set = { realizado: true, fecha_hora_real: new Date(ev.fecha_hora), operario: ev.operario, id_evento: ev.id_evento,
+    notas: 'Desde bitácora' + (ev.notas ? ': ' + ev.notas : '') };
+  Object.keys(set).forEach(f => { if (col(f) >= 0) t.sh.getRange(best + 2, col(f) + 1).setValue(set[f]); });
+}
+
+function unlinkEvento_(idEvento, cache) {
+  const t = tableInfo_('Pasos_Lote', cache);
+  const c = n => t.headers.indexOf(n);
+  if (c('id_evento') < 0 || !t.keys.length) return;
+  const values = t.sh.getRange(2, 1, t.keys.length, t.headers.length).getValues();
+  values.forEach((r, i) => {
+    if (String(r[c('id_evento')]) !== String(idEvento)) return;
+    ['realizado', 'fecha_hora_real', 'operario', 'id_evento', 'notas'].forEach(f => t.sh.getRange(i + 2, c(f) + 1).setValue(f === 'realizado' ? false : ''));
+  });
+}
+
+// Vincula los eventos que ya existían antes de esta versión
+function backfillLinks_() {
+  const linked = new Set(readTable_('Pasos_Lote').rows.map(r => String(r.id_evento || '')).filter(Boolean));
+  readTable_('Eventos').rows
+    .filter(e => !linked.has(String(e.id_evento)))
+    .sort((a, b) => String(a.fecha_hora).localeCompare(String(b.fecha_hora)))
+    .forEach(e => linkEvento_(e, null, {}));
 }

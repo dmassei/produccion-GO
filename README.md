@@ -56,6 +56,15 @@ La app sugiere `PREFIJO-AAMMDD` (por ejemplo `LY-261003`). El prefijo sale de un
 
 Cualquier usuario, mientras el lote no esté cerrado: tocá el insumo → en *Cargas registradas*, **Anular** junto a la carga equivocada → motivo y, si querés, la **cantidad correcta**. La carga original no se borra: queda tachada con quién la anuló, cuándo y por qué, y deja de sumar. La corrección se registra con la misma hora y lote, y el reporte de trazabilidad muestra ambas. Con el lote cerrado, solo un Admin puede corregir.
 
+## Pasos vinculados a la bitácora
+
+En la pestaña *Pasos*, la columna **Tipo_evento** vincula un paso con un tipo de evento (por ejemplo "Revolver y rotar bolsas" → `Revuelto, Rotación`). La primera vez que corre la versión nueva del servidor se completa sola para revolver/rotar, escurrido y filtrado; se puede editar para otros pasos.
+
+- Al registrar en *Bitácora* un evento de ese tipo, la app marca hecho el paso pendiente de fecha prevista más cercana, con la hora y el usuario del evento ("desde bitácora"). Cada evento cierra un solo paso.
+- Tocar **Hecho** en un paso vinculado abre directamente el formulario del evento con el tipo elegido: un solo registro sirve para las dos cosas.
+- Si un Admin borra el evento, el paso vuelve a pendiente.
+- Los eventos que ya existían se vinculan solos al actualizar.
+
 ## Stock de insumos
 
 El stock se calcula solo: **cantidad recibida − cargas (sin las anuladas) ± ajustes**, por lote de insumo.
@@ -105,7 +114,7 @@ Recetas y usuarios se editan directamente en la planilla.
 ## Cambios futuros
 
 - **Si cambiás `Code.gs`:** Implementar → Gestionar implementaciones → ✏️ → Versión: **Nueva versión** → Implementar. La URL no cambia.
-- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v8` → `go-v9`) (así los celulares toman la versión nueva).
+- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v9` → `go-v10`) (así los celulares toman la versión nueva).
 - **Receta nueva o ajustada:** agregá la versión en *Recetas*, *Receta_Items* y *Pasos* con estado *Vigente* y pasá la anterior a *Obsoleta*. Los lotes viejos conservan la receta con la que se hicieron.
 
 ## Limpieza opcional

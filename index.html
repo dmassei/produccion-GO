@@ -126,7 +126,7 @@ table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
 // Pegá acá la URL de la implementación de Apps Script (termina en /exec).
 // Si queda vacía, la app la pide la primera vez.
 const DEFAULT_API = '';
-const APP_VERSION = '2026-09-26 v8';
+const APP_VERSION = '2026-10-03 v9';
 
 const ETAPAS = ['Carga', 'Maceración', 'Escurrido', 'Filtrado', 'Control', 'Cerrado'];
 const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
@@ -193,6 +193,20 @@ function toast(msg, ms = 2600) {
    Estado: snapshot del servidor + operaciones en cola
    ============================================================ */
 function emptyData() { const d = {}; TABLES.forEach(t => d[t] = []); return d; }
+// Pasos ↔ eventos: un evento de bitácora del tipo vinculado marca hecho el paso pendiente más cercano
+const normT = x => String(x || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const tiposPaso = idPaso => { const p = (S && S.Pasos ? S.Pasos : snapshot ? snapshot.Pasos || [] : []).find(x => same(x.id_paso, idPaso));
+  return String((p && p.tipo_evento) || '').split(',').map(normT).filter(Boolean); };
+function linkLocal(d, ev, hint) {
+  const tipo = normT(ev.tipo); const t = new Date(ev.fecha_hora).getTime();
+  const cand = (d.Pasos_Lote || []).filter(p => same(p.id_lote, ev.id_lote) && !truthy(p.realizado) && tiposPasoD(d, p.id_paso).includes(tipo));
+  const p = cand.find(x => same(x.id_paso_lote, hint)) ||
+    cand.sort((a, b) => Math.abs(new Date(a.fecha_prevista) - t) - Math.abs(new Date(b.fecha_prevista) - t))[0];
+  if (p) Object.assign(p, { realizado: true, fecha_hora_real: ev.fecha_hora, operario: ev.operario, id_evento: ev.id_evento,
+    notas: 'Desde bitácora' + (ev.notas ? ': ' + ev.notas : ''), _pending: true });
+}
+const tiposPasoD = (d, idPaso) => { const p = (d.Pasos || []).find(x => same(x.id_paso, idPaso));
+  return String((p && p.tipo_evento) || '').split(',').map(normT).filter(Boolean); };
 function computeState() {
   const d = emptyData();
   if (snapshot) TABLES.forEach(t => d[t] = (snapshot[t] || []).map(r => Object.assign({}, r)));
@@ -204,7 +218,10 @@ function applyLocal(d, op) {
   const t = d[op.table] || (d[op.table] = []);
   const key = KEYS[op.table];
   if (op.type === 'insert') {
-    if (!t.some(r => same(r[key], op.row[key]))) t.push(Object.assign({ _pending: true }, op.row));
+    if (!t.some(r => same(r[key], op.row[key]))) {
+      t.push(Object.assign({ _pending: true }, op.row));
+      if (op.table === 'Eventos') linkLocal(d, op.row, op.link);
+    }
   } else if (op.type === 'update') {
     const r = t.find(r => same(r[key], op.key));
     if (r) Object.assign(r, op.fields, { _pending: true });
@@ -213,6 +230,8 @@ function applyLocal(d, op) {
     if (r) Object.assign(r, { anulada: true, anulada_por: op.by, fecha_anulacion: op.at, motivo_anulacion: op.motivo, _pending: true });
   } else if (op.type === 'delete') {
     d[op.table] = t.filter(r => !same(r[key], op.key));
+    if (op.table === 'Eventos') (d.Pasos_Lote || []).filter(p => same(p.id_evento, op.key))
+      .forEach(p => Object.assign(p, { realizado: false, fecha_hora_real: '', operario: '', id_evento: '', notas: '', _pending: true }));
   } else if (op.type === 'deleteLote') {
     const items = new Set((d.Lote_Items || []).filter(r => same(r.id_lote, op.key)).map(r => String(r.id_lote_item)));
     d.Cargas = (d.Cargas || []).filter(r => !items.has(String(r.id_lote_item)));
@@ -368,7 +387,7 @@ async function sync(opts = {}) {
         const pin = creds[by];
         const ids = new Set(ops.map(o => o.id));
         if (!pin) { moveToFailed(ops, 'Sin credenciales guardadas para ' + by); continue; }
-        const r = await call({ action: 'sync', user: by, pin, ops: ops.map(({ id, type, table, row, key, fields, admin, motivo }) => ({ id, type, table, row, key, fields, admin, motivo })) });
+        const r = await call({ action: 'sync', user: by, pin, ops: ops.map(({ id, type, table, row, key, fields, admin, motivo, link }) => ({ id, type, table, row, key, fields, admin, motivo, link })) });
         if (!r.ok) {
           if (AUTH_ERR.test(r.error || '')) { moveToFailed(ops, r.error); continue; }
           throw new Error(r.error);
@@ -824,12 +843,15 @@ function tabProceso(l) {
   if (!ps.length) return `<p class="muted">Este lote no tiene pasos de proceso.</p>`;
   return `<div class="card list">${ps.map(p => { const def = pasoDef(p.id_paso); const st = pasoState(p);
     return `<div class="li row"><div class="grow"><div class="b">${esc(def.descripcion || p.id_paso)}${pendMark(p)}</div>
-      <div class="small muted">${esc(def.etapa || '')} · previsto ${fdt(p.fecha_prevista)}${st === 'hecho' ? ` · <span style="color:var(--ok)">hecho ${fdt(p.fecha_hora_real)}${p.operario ? ' · ' + esc(p.operario) : ''}</span>` : ''}</div>
-      ${p.notas ? `<div class="small">${esc(p.notas)}</div>` : ''}</div>
+      <div class="small muted">${esc(def.etapa || '')} · previsto ${fdt(p.fecha_prevista)}${st === 'hecho' ? ` · <span style="color:var(--ok)">hecho ${fdt(p.fecha_hora_real)}${p.operario ? ' · ' + esc(p.operario) : ''}${p.id_evento ? ' · desde bitácora' : ''}</span>` : ''}</div>
+      ${p.notas ? `<div class="small">${esc(String(p.notas).replace(/^Desde bitácora: ?/, ''))}</div>` : ''}</div>
       ${st === 'hecho' ? '<span class="chip ok">✓</span>' : l.etapa === 'Cerrado' ? '' : `<button class="btn ${st === 'vencido' ? 'danger' : ''}" data-act="paso" data-id="${esc(p.id_paso_lote)}">${st === 'vencido' ? 'Vencida · Hecho' : 'Hecho'}</button>`}</div>`; }).join('')}</div>`;
 }
 ACTIONS.paso = d => {
   const p = find('Pasos_Lote', 'id_paso_lote', d.id); const def = pasoDef(p.id_paso);
+  const tipos = String(def.tipo_evento || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (tipos.length) { const tipo = TIPOS_EVENTO.find(t => normT(t) === normT(tipos[0])) || tipos[0];
+    return ACTIONS.evento({ id: p.id_lote, tipo, paso: p.id_paso_lote, titulo: def.descripcion }); }
   openModal(`<h2 style="margin-top:0">${esc(def.descripcion || '')}</h2>
     <form data-form="paso" data-id="${esc(d.id)}">
       <label class="f">Realizado el<input class="in" type="datetime-local" name="cuando" value="${toLocalInput(new Date())}" required></label>
@@ -850,10 +872,11 @@ function tabBitacora(l) {
     ${e.tipo_filtro || e.litros ? `<div class="small" style="margin-top:4px">${e.tipo_filtro ? 'Filtro: <b>' + esc(e.tipo_filtro) + '</b>' : ''}${e.litros ? ' · ' + fmt(e.litros, 1) + ' L' : ''}</div>` : ''}
     ${e.notas ? `<div style="margin-top:4px">${esc(e.notas)}</div>` : ''}</div>`).join('')}</div>` : `<p class="muted">Sin eventos registrados.</p>`}`;
 }
-ACTIONS.evento = d => openModal(`<h2 style="margin-top:0">Registrar evento</h2>
-  <form data-form="evento" data-id="${esc(d.id)}" id="fEvento">
-    <label class="f">Tipo<select class="in" name="tipo" data-live="tipoEv">${TIPOS_EVENTO.map(t => `<option>${t}</option>`).join('')}</select></label>
-    <div id="filtroBox" hidden><div class="grid2"><label class="f">Tipo de filtro<input class="in" name="tipo_filtro" placeholder="Ej. placa 5 µm"></label>
+ACTIONS.evento = d => openModal(`<h2 style="margin-top:0">${d.titulo ? esc(d.titulo) : 'Registrar evento'}</h2>
+  ${d.paso ? '<p class="small muted">Se registra en la bitácora y marca el paso como hecho.</p>' : ''}
+  <form data-form="evento" data-id="${esc(d.id)}" data-paso="${esc(d.paso || '')}" id="fEvento">
+    <label class="f">Tipo<select class="in" name="tipo" data-live="tipoEv">${TIPOS_EVENTO.map(t => `<option ${t === d.tipo ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <div id="filtroBox" ${d.tipo === 'Filtrado' ? '' : 'hidden'}><div class="grid2"><label class="f">Tipo de filtro<input class="in" name="tipo_filtro" placeholder="Ej. placa 5 µm"></label>
       <label class="f">Litros filtrados<input class="in" name="litros" inputmode="decimal"></label></div></div>
     <label class="f">Fecha y hora<input class="in" type="datetime-local" name="cuando" value="${toLocalInput(new Date())}" required></label>
     <label class="f">Notas<textarea class="in" name="notas" placeholder="Color, aroma, estado de las bolsas…"></textarea></label>
@@ -861,9 +884,9 @@ ACTIONS.evento = d => openModal(`<h2 style="margin-top:0">Registrar evento</h2>
 LIVE.tipoEv = el => { $('#filtroBox').hidden = el.value !== 'Filtrado'; };
 FORMS.evento = (d, f) => {
   if (!d.notas && d.tipo !== 'Filtrado') { toast('Agregá una nota'); return; }
-  enqueue([{ type: 'insert', table: 'Eventos', row: { id_evento: uid('EV'), id_lote: f.dataset.id, tipo: d.tipo, fecha_hora: fromLocalInput(d.cuando),
+  enqueue([{ type: 'insert', table: 'Eventos', link: f.dataset.paso || '', row: { id_evento: uid('EV'), id_lote: f.dataset.id, tipo: d.tipo, fecha_hora: fromLocalInput(d.cuando),
     operario: session.nombre, tipo_filtro: d.tipo === 'Filtrado' ? (d.tipo_filtro || '') : '', litros: d.tipo === 'Filtrado' && !isNaN(num(d.litros)) ? num(d.litros) : '', notas: d.notas || '' } }]);
-  closeModal(); toast('Evento guardado');
+  closeModal(); toast(f.dataset.paso ? 'Paso registrado en bitácora' : 'Evento guardado');
 };
 
 /* ----- controles ----- */
@@ -989,7 +1012,7 @@ function viewReporte(id) {
       <td class="small">${esc(c.observacion || '')}${an ? `<div style="color:var(--bad)">ANULADA por ${esc(c.anulada_por || '')} el ${fdt(c.fecha_anulacion)}: ${esc(c.motivo_anulacion || '')}</div>` : ''}</td></tr>`; }).join('')}
   </table></div>
   <h2>Proceso</h2><div class="card scroll"><table class="t"><tr><th>Paso</th><th>Previsto</th><th>Realizado</th><th>Operario</th></tr>
-  ${pasosOf(id).map(p => `<tr><td>${esc(pasoDef(p.id_paso).descripcion || p.id_paso)}${p.notas ? '<div class="small muted">' + esc(p.notas) + '</div>' : ''}</td><td class="small">${fdt(p.fecha_prevista)}</td><td class="small">${truthy(p.realizado) ? fdt(p.fecha_hora_real) : '<span style="color:var(--bad)">pendiente</span>'}</td><td class="small">${esc(p.operario || '')}</td></tr>`).join('')}
+  ${pasosOf(id).map(p => `<tr><td>${esc(pasoDef(p.id_paso).descripcion || p.id_paso)}${p.notas ? '<div class="small muted">' + esc(p.notas) + '</div>' : ''}</td><td class="small">${fdt(p.fecha_prevista)}</td><td class="small">${truthy(p.realizado) ? fdt(p.fecha_hora_real) + (p.id_evento ? '<div class="muted">desde bitácora</div>' : '') : '<span style="color:var(--bad)">pendiente</span>'}</td><td class="small">${esc(p.operario || '')}</td></tr>`).join('')}
   </table></div>
   ${ev.length ? `<h2>Bitácora</h2><div class="card scroll"><table class="t"><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Operario</th></tr>
   ${ev.map(e => `<tr><td class="small">${fdt(e.fecha_hora)}</td><td>${esc(e.tipo)}</td><td class="small">${e.tipo_filtro ? 'Filtro ' + esc(e.tipo_filtro) + (e.litros ? ', ' + fmt(e.litros, 1) + ' L. ' : '. ') : ''}${esc(e.notas || '')}</td><td class="small">${esc(e.operario || '')}</td></tr>`).join('')}</table></div>` : ''}
