@@ -32,7 +32,12 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-sy
 button,input,select,textarea{font:inherit;color:inherit}
 body.admin header.top{background:#7A1F1F}
 header.top{position:sticky;top:0;z-index:20;background:var(--brand);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px}
-header.top .t{font-weight:700;font-size:18px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header.top .home{flex:none;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.14)}
+header.top .home svg{width:24px;height:24px}
+header.top .home.on{background:rgba(255,255,255,.28)}
+header.top .sp{flex:1}
+#syncPill{font-size:12px;padding:6px 9px;white-space:nowrap}
+#userPill{white-space:nowrap;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
 header.top a{color:#fff;text-decoration:none}
 .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;font-size:13px;font-weight:600;background:rgba(255,255,255,.14);color:#fff;border:0;min-height:34px;cursor:pointer}
 .dot{width:9px;height:9px;border-radius:50%;background:#7BE0A6;flex:none}
@@ -110,7 +115,8 @@ table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
 </head>
 <body>
 <header class="top">
-  <a class="t" href="#/">Producción GO</a>
+  <a class="home" id="homeBtn" href="#/" aria-label="Inicio" title="Inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg></a>
+  <span class="sp"></span>
   <button class="pill" id="syncPill" data-act="syncNow" aria-label="Sincronizar"><span class="dot" id="syncDot"></span><span id="syncTxt">—</span></button>
   <button class="pill" id="userPill" data-act="userMenu" hidden></button>
 </header>
@@ -126,7 +132,7 @@ table.t td.n,table.t th.n{text-align:right;white-space:nowrap}
 // Pegá acá la URL de la implementación de Apps Script (termina en /exec).
 // Si queda vacía, la app la pide la primera vez.
 const DEFAULT_API = '';
-const APP_VERSION = '2026-10-03 v10';
+const APP_VERSION = '2026-10-03 v11';
 
 const ETAPAS = ['Carga', 'Maceración', 'Escurrido', 'Filtrado', 'Control', 'Cerrado'];
 const NIVEL = { Operario: 1, Supervisor: 2, Aprobador: 3, Admin: 4 };
@@ -419,7 +425,7 @@ async function sync(opts = {}) {
     }
     lastSync = nowIso();
     LS.set('snapshot', snapshot); LS.set('queue', queue); LS.set('failed', failed); LS.set('lastSync', lastSync);
-    if (opts.manual) toast('Sincronizado');
+    if (opts.manual) toast('Sincronizado ' + ft(lastSync));
   } catch (e) {
     lastError = e.name === 'AbortError' ? 'Sin respuesta del servidor' : (navigator.onLine ? String(e.message || e) : 'Sin conexión');
     if (opts.manual) toast(lastError);
@@ -438,8 +444,10 @@ function updatePill() {
   const dot = $('#syncDot'), txt = $('#syncTxt');
   dot.className = 'dot' + (syncing ? ' busy' : lastError ? (navigator.onLine ? ' err' : ' off') : (!navigator.onLine ? ' off' : ''));
   const n = queue.length;
-  txt.textContent = syncing ? 'Sincronizando…' : n ? `${n} sin enviar` : (lastSync ? 'Al día ' + ft(lastSync) : (navigator.onLine ? 'En línea' : 'Sin conexión'));
+  txt.textContent = syncing ? 'Sincronizando…' : n ? `${n} sin enviar` : (lastSync ? 'Al día' : (navigator.onLine ? 'En línea' : 'Sin conexión'));
   const up = $('#userPill');
+  $('#syncPill').title = lastSync ? 'Última sincronización ' + fdt(lastSync) : '';
+  $('#homeBtn').classList.toggle('on', /^#?\/?$/.test(location.hash));
   if (session) { up.hidden = false; up.textContent = session.rol === 'Admin' ? 'ADMIN · ' + session.nombre.split(' ')[0] : session.nombre.split(' ')[0]; } else up.hidden = true;
   document.body.classList.toggle('admin', !!session && session.rol === 'Admin');
 }
