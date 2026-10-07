@@ -66,6 +66,15 @@ En la pestaña *Pasos*, la columna **Tipo_evento** vincula un paso con un tipo d
 - Los eventos que ya existían se vinculan solos al actualizar.
 - **Pasos que se repiten:** la columna **Repetir_cada_h** de *Pasos* (48 en "Revolver y rotar bolsas") programa el siguiente a esa cantidad de horas desde que se hizo el anterior, hasta el fin de la maceración de la receta. Vale igual si se registra desde Proceso o desde Bitácora. Dejarla vacía desactiva la repetición.
 
+## Fotos en la bitácora
+
+- En cada evento de *Bitácora*: **📷 Agregar foto**, con **Tomar foto** (abre la cámara) o **Galería**. Sirve para eventos ya registrados: la foto queda con la fecha y hora del evento.
+- Al **registrar un evento** también se pueden sacar o elegir fotos en el mismo formulario.
+- La app reduce cada foto (máx. 1600 px) y la guarda en el teléfono hasta sincronizar; funciona sin conexión.
+- El servidor las sube a Drive, en la carpeta **"Producción GO - Fotos"** (una subcarpeta por lote). La pestaña *Fotos* guarda evento, lote, usuario, hora de subida y una miniatura. Tocando la miniatura se ve la foto completa; el reporte de trazabilidad las incluye.
+- Un Admin puede borrar una foto desde el visor (queda en Auditoría y el archivo va a la papelera de Drive).
+- **Permiso de Drive:** al actualizar el código, ejecutá una vez `setup` desde el editor de Apps Script y aceptá el permiso nuevo; después publicá la nueva versión.
+
 ## Stock de insumos
 
 El stock se calcula solo: **cantidad recibida − cargas (sin las anuladas) ± ajustes**, por lote de insumo.
@@ -115,7 +124,7 @@ Recetas y usuarios se editan directamente en la planilla.
 ## Cambios futuros
 
 - **Si cambiás `Code.gs`:** Implementar → Gestionar implementaciones → ✏️ → Versión: **Nueva versión** → Implementar. La URL no cambia.
-- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v11` → `go-v12`) (así los celulares toman la versión nueva).
+- **Si cambiás la app:** subí los archivos a GitHub y en `sw.js` subí el número de versión en `sw.js` (`go-v12` → `go-v13`) (así los celulares toman la versión nueva).
 - **Receta nueva o ajustada:** agregá la versión en *Recetas*, *Receta_Items* y *Pasos* con estado *Vigente* y pasá la anterior a *Obsoleta*. Los lotes viejos conservan la receta con la que se hicieron.
 
 ## Limpieza opcional

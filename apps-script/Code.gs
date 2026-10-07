@@ -29,6 +29,7 @@ function setup() {
     range.setValues(pins);
   }
   ensureCols_('Cargas', CARGA_COLS, {});
+  DriveApp.getRootFolder(); // pide el permiso de Drive (fotos de bitácora)
   Logger.log('Listo. Revisá los PIN en la pestaña Usuarios.');
 }
 
@@ -36,14 +37,14 @@ const ROLES = { 'Operario': 1, 'Supervisor': 2, 'Aprobador': 3, 'Admin': 4 };
 
 // Tablas que la app descarga (maestros + producción)
 const MASTER_TABLES = ['Recetas', 'Receta_Items', 'Pasos', 'Insumos', 'Lotes_Insumo', 'Productos', 'Proveedores', 'Ajustes_Stock'];
-const CHILD_TABLES = ['Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab'];
+const CHILD_TABLES = ['Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab', 'Fotos'];
 const RECENT_LOTS = 40; // lotes cerrados recientes que se envían completos
 
 // Qué puede escribir la app, y con qué rol mínimo
 const INSERT_RULES = {
   Lotes: 2, Lote_Items: 2, Pasos_Lote: 2,
   Cargas: 1, Eventos: 1, Controles: 1, Lotes_Insumo: 1,
-  Proveedores: 4, Insumos: 4, Ajustes_Stock: 2
+  Proveedores: 4, Insumos: 4, Ajustes_Stock: 2, Fotos: 1
 };
 const UPDATE_RULES = {
   Lotes: {
@@ -54,7 +55,7 @@ const UPDATE_RULES = {
 };
 // Modo administrador: tablas que el Admin puede corregir o borrar (queda registrado en Auditoria)
 const ADMIN_TABLES = ['Lotes', 'Lote_Items', 'Pasos_Lote', 'Cargas', 'Eventos', 'Controles', 'Analisis_Lab',
-  'Lotes_Insumo', 'Proveedores', 'Insumos', 'Ajustes_Stock'];
+  'Lotes_Insumo', 'Proveedores', 'Insumos', 'Ajustes_Stock', 'Fotos'];
 // Campos que la app muestra al instante pero que siempre escribe el servidor
 const SERVER_FIELDS = { Lotes: ['aprobado_por', 'fecha_aprobacion'], Pasos_Lote: ['operario'] };
 
@@ -76,6 +77,7 @@ function route_(p) {
     if (p.action === 'users') return { ok: true, users: listUsers_() };
     const user = auth_(p.user, p.pin);
     ensureSchema_();
+    if (p.action === 'foto') return { ok: true, data: fotoData_(p.id) };
     if (p.action === 'snapshot') return { ok: true, user: user, data: snapshot_(), time: new Date().toISOString() };
     if (p.action === 'sync') {
       const results = applyOps_(p.ops || [], user);
@@ -236,6 +238,12 @@ function applyOne_(op, user, cache) {
     const key = String(row[t.headers[0]] || '');
     if (!key) throw new Error('Falta la clave ' + t.headers[0]);
     if (t.keys.indexOf(key) >= 0) return { status: 'dup' }; // ya estaba: reintento de sincronización
+    if (op.table === 'Fotos') {
+      if (!row.data) throw new Error('La foto no llegó (sin datos)');
+      row.file_id = guardarFoto_(row);
+      row.usuario = user.nombre; row.subida_el = now;
+      delete row.data;
+    }
     const values = t.headers.map(h => toCell_(h, row[h]));
     t.sh.appendRow(values);
     t.keys.push(key);
@@ -329,6 +337,8 @@ function adminDelete_(op, user, cache) {
   if (idx < 0) return { status: 'dup' }; // ya no estaba
   const before = rowObj_(t, idx);
   if (op.table === 'Eventos') unlinkEvento_(op.key, cache);
+  if (op.table === 'Eventos') deleteWhere_('Fotos', r => String(r.id_evento) === String(op.key), cache);
+  if (op.table === 'Fotos' && before.file_id) { try { DriveApp.getFileById(before.file_id).setTrashed(true); } catch (e) { /* ya no estaba */ } }
   t.sh.deleteRow(idx + 2);
   t.keys.splice(idx, 1);
   audit_(user, 'Borrado', op.table, op.key, before, null, op.motivo);
@@ -357,7 +367,7 @@ function adminDeleteLote_(op, user, cache) {
   const items = new Set(readTable_('Lote_Items').rows.filter(r => String(r.id_lote) === id).map(r => String(r.id_lote_item)));
   const detalle = {};
   detalle.Cargas = deleteWhere_('Cargas', r => items.has(String(r.id_lote_item)), cache);
-  ['Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab'].forEach(t => {
+  ['Lote_Items', 'Pasos_Lote', 'Eventos', 'Controles', 'Analisis_Lab', 'Fotos'].forEach(t => {
     detalle[t] = deleteWhere_(t, r => String(r.id_lote) === id, cache);
   });
   detalle.Lotes = deleteWhere_('Lotes', r => String(r.id_lote) === id, cache);
@@ -396,13 +406,16 @@ function anularCarga_(op, user, cache) {
 
 // ---------------------------------------------------------------- esquema
 // Crea solo las columnas y pestañas que agregan las versiones nuevas (una vez por versión).
-const SCHEMA_VERSION = '5';
+const SCHEMA_VERSION = '6';
 function ensureSchema_() {
   const props = PropertiesService.getScriptProperties();
   if (props.getProperty('schema') === SCHEMA_VERSION) return;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   ensureCols_('Cargas', CARGA_COLS, {});
   ensureCols_('Insumos', ['Controla_stock', 'Stock_minimo'], {});
+  if (!ss.getSheetByName('Fotos')) {
+    ss.insertSheet('Fotos').appendRow(['ID_Foto', 'ID_Evento', 'ID_Lote', 'Fecha_hora', 'Usuario', 'Subida_el', 'File_ID', 'Thumb']);
+  }
   if (!ss.getSheetByName('Ajustes_Stock')) {
     ss.insertSheet('Ajustes_Stock').appendRow(['ID_Ajuste', 'ID_Lote_Insumo', 'Cantidad', 'Tipo', 'Fecha_hora', 'Usuario', 'Motivo']);
   }
@@ -496,4 +509,31 @@ function backfillRepeticiones_() {
       sh.appendRow(h.map(c => row[c] === undefined ? '' : row[c]));
     });
   });
+}
+
+// ---------------------------------------------------------------- fotos
+// Las fotos se guardan en Drive (carpeta "Producción GO - Fotos", una subcarpeta por lote).
+// La planilla guarda solo una miniatura y el ID del archivo; la foto completa se pide al abrirla.
+function carpetaFotos_(idLote) {
+  const props = PropertiesService.getScriptProperties();
+  let root = null;
+  const id = props.getProperty('fotosFolder');
+  if (id) { try { root = DriveApp.getFolderById(id); } catch (e) { root = null; } }
+  if (!root) { root = DriveApp.createFolder('Producción GO - Fotos'); props.setProperty('fotosFolder', root.getId()); }
+  const it = root.getFoldersByName(String(idLote));
+  return it.hasNext() ? it.next() : root.createFolder(String(idLote));
+}
+
+function guardarFoto_(row) {
+  const m = String(row.data).match(/^data:(image\/[a-z]+);base64,(.+)$/);
+  if (!m) throw new Error('Formato de foto inválido');
+  const blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], row.id_foto + '.jpg');
+  return carpetaFotos_(row.id_lote).createFile(blob).getId();
+}
+
+function fotoData_(idFoto) {
+  const f = readTable_('Fotos').rows.find(r => String(r.id_foto) === String(idFoto));
+  if (!f || !f.file_id) throw new Error('Foto no encontrada');
+  const b = DriveApp.getFileById(f.file_id).getBlob();
+  return 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
 }
